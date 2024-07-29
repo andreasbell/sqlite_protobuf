@@ -12,7 +12,6 @@ This exension works without the need for protobuf definitions (`.proto` files). 
 To build the extension run the following command in the root directory
 - `mkdir build`
 - `cd build`
-- `conan install ..`
 - `cmake .. -DCMAKE_BUILD_TYPE=Release`
 - `cmake --build . --config=release`
 

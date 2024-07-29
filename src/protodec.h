@@ -39,7 +39,7 @@ struct Field
     Field* parent;
     std::vector<Field> subFields;
 
-    std::map<uint32_t, std::vector<Field *>> subFieldMap();
+    std::map< uint32_t, std::vector<Field *> > subFieldMap();
     Field* getSubField(uint32_t fieldNumber, WireType wireType, int64_t index);
 };
 

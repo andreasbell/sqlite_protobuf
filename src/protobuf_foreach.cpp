@@ -17,8 +17,8 @@ namespace sqlite_protobuf
         return std::string(text, text_size);
     }
 
-    /* ProtobufForeachVtab is a subclass of sqlite3_vtab which is underlying
-    ** representation of the virtual table
+    /*
+    ** Define virtual table data structure containg data needed for virtual table
     */
     typedef struct ProtobufForeachVtab ProtobufForeachVtab;
     struct ProtobufForeachVtab 
@@ -26,8 +26,8 @@ namespace sqlite_protobuf
         sqlite3_vtab base;  // Base class - must be first
     };
 
-    /* ProtobufForeachCursor is a subclass of sqlite3_vtab_cursor which will serve as 
-    ** the underlying representation of a cursor that scans over rows of the result
+    /*
+    ** Define cursor data structure, used to iterate over virtual table rows
     */
     typedef struct ProtobufForeachCursor ProtobufForeachCursor;
     struct ProtobufForeachCursor 
@@ -40,14 +40,7 @@ namespace sqlite_protobuf
     };
 
     /*
-    ** The protobufForeachConnect() method is invoked to create a new virtual table.
-    ** This routine can be thought of as a constructor for ProtobufForeachVtab objects.
-    ** All this routine needs to do is:
-    **
-    **    (1) Allocate the ProtobufForeachVtab object and initialize all fields.
-    **
-    **    (2) Tell SQLite (via the sqlite3_declare_vtab() interface) what the
-    **        result set of queries against the virtual table will look like.
+    ** Constructor for ProtobufForeachVtab objects.
     */
     static int protobufForeachConnect(sqlite3 *db, void *pAux, int argc, const char *const*argv, sqlite3_vtab **ppVtab, char **pzErr)
     {
@@ -60,11 +53,13 @@ namespace sqlite_protobuf
         #define PROTOBUF_FOREACH_BUFFER   5 // First argument (marked as HIDDEN) protobuf buffer
         #define PROTOBUF_FOREACH_ROOT     6 // Second argument (marked as HIDDEN) root path
 
+        // Tell SQLite what the result set of queries against the virtual table will look like.
         ProtobufForeachVtab *pNew;
         int rc = sqlite3_declare_vtab(db,"CREATE TABLE x(tag,field,wiretype,value,parent,buffer HIDDEN,root HIDDEN)");
 
         if( rc==SQLITE_OK )
         {
+            // Allocate the ProtobufForeachVtab object and initialize all fields
             pNew = (ProtobufForeachVtab *)sqlite3_malloc( sizeof(*pNew) );
             *ppVtab = (sqlite3_vtab*)pNew;
             if( pNew==0 ) return SQLITE_NOMEM;
@@ -75,7 +70,7 @@ namespace sqlite_protobuf
     }
 
     /*
-    ** This method is the destructor for ProtobufForeachVtab objects.
+    ** Destructor for ProtobufForeachVtab objects.
     */
     static int protobufForeachDisconnect(sqlite3_vtab *pVtab)
     {
@@ -120,8 +115,7 @@ namespace sqlite_protobuf
     }
 
     /*
-    ** Return values of columns for the row at which the ProtobufForeachCursor
-    ** is currently pointing.
+    ** Return value at given column and row (ProtobufForeachCursor).
     */
     static int protobufForeachColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int col)
     {
@@ -325,8 +319,7 @@ namespace sqlite_protobuf
     }
 
     /*
-    ** This following structure defines all the methods for the 
-    ** virtual table.
+    ** Define all the methods for the module (virtual table).
     */
     static sqlite3_module protobufForeachModule = {
         /* iVersion    */ 0,
@@ -349,11 +342,11 @@ namespace sqlite_protobuf
         /* xRollback   */ 0,
         /* xFindMethod */ 0,
         /* xRename     */ 0,
-        /* xSavepoint  */ 0,
-        /* xRelease    */ 0,
-        /* xRollbackTo */ 0,
-        /* xShadowName */ 0,
-        /* xIntegrity  */ 0
+        /* xSavepoint  */ //0, // iVersion >= 2 
+        /* xRelease    */ //0, // iVersion >= 2
+        /* xRollbackTo */ //0, // iVersion >= 2
+        /* xShadowName */ //0, // iVersion >= 3
+        /* xIntegrity  */ //0, // iVersion >= 4
     };
 
 

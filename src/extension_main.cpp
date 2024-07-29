@@ -16,14 +16,14 @@ namespace sqlite_protobuf
     {
         SQLITE_EXTENSION_INIT2(pApi);
 
-        // Check that we are compatible with this version of SQLite
-        // 3.13.0 - SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION added
-        if (sqlite3_libversion_number() < 3013000)
+        /*
+        if (sqlite3_libversion_number() < 3024000)
         {
             *pzErrMsg = sqlite3_mprintf(
-                "sqlite_protobuf requires SQLite 3.13.0 or later");
+                "sqlite_protobuf requires SQLite 3.24.0 or later");
             return SQLITE_ERROR;
         }
+        */
 
         // Run each register_* function and abort if any of them fails
         int (*register_fns[])(sqlite3 *, char **, const sqlite3_api_routines *) = {

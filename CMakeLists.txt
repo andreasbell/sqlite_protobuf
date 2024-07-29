@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 project(sqlite_protobuf)
 
-include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup()
+set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
 add_library(${PROJECT_NAME} SHARED
     src/extension_main.cpp
@@ -17,6 +16,8 @@ add_library(${PROJECT_NAME} SHARED
 #  src/protodec.cpp
 #)
 
-target_link_libraries(${PROJECT_NAME} 
-	${CONAN_LIBS}
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
+
+target_include_directories(${PROJECT_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/sqlite3
 )

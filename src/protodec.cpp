@@ -12,9 +12,9 @@
 static int decodeField(Field *field, Buffer *in, bool packed);
 static uint32_t getTag(uint32_t fieldNumber, WireType wireType);
 
-std::map<uint32_t, std::vector<Field *>> Field::subFieldMap()
+std::map< uint32_t, std::vector<Field *> > Field::subFieldMap()
 {
-    std::map<uint32_t, std::vector<Field *>> m;
+    std::map< uint32_t, std::vector<Field *> > m;
     for (Field &f : this->subFields)
     {
         m[f.tag].push_back(&f);
@@ -43,6 +43,12 @@ Field* Field::getSubField(uint32_t fieldNumber, WireType wireType, int64_t index
 static inline const uint8_t *readVarint(const Buffer *in, int64_t *out, size_t maxBytes)
 {
     *out = 0;
+    if (!in->start || in->start >= in->end)
+    {
+        // Invalid input buffer
+        return nullptr;
+    }
+    
     uint64_t byte;
     for (size_t i = 0; i < maxBytes; i++)
     {
@@ -64,27 +70,20 @@ static inline const uint8_t *readVarint(const Buffer *in, int64_t *out, size_t m
         }
     }
 
-    // Error reading Varint
+    // Error reading varint
     *out = 0;
     return nullptr;
 }
 
 static inline uint32_t getTag(Buffer *b)
 {
-    if (!b->start || b->start >= b->end)
-    {
-        return 0;
-    }
-
     int64_t tag;
     const uint8_t *ptr = readVarint(b, &tag, MAX_VARINT_32BYTES);
-    if (!ptr)
+    if (nullptr != ptr)
     {
-        return 0;
+        // Advance buffer if valid varint
+        b->start = ptr;
     }
-
-    b->start = ptr;
-
     return (uint32_t)tag;
 }
 
@@ -103,7 +102,7 @@ static inline int getTagFieldNumber(uint32_t tag)
     return tag >> TAG_BITS;
 }
 
-static inline void InitField(Field *field, Buffer *in)
+static inline void initField(Field *field, Buffer *in)
 {
     memset(field, 0, sizeof(Field));
     field->tag = getTag(in);
@@ -176,14 +175,14 @@ static inline int decodeString(Field *field, Buffer *in)
     return DECODE_OK;
 }
 
-static inline int tryDecodeSubField(Field *field, bool packed)
+static inline int decodeSubField(Field *field, bool packed)
 {
     Buffer b = field->value;
 
     while (b.start < b.end)
     {
         Field subField;
-        InitField(&subField, &b);
+        initField(&subField, &b);
         subField.depth = field->depth + 1;
         subField.parent = field;
 
@@ -205,7 +204,7 @@ static inline int tryDecodeSubField(Field *field, bool packed)
     return DECODE_OK;
 }
 
-static inline int tryDecodePacked(Field *field, WireType wireType)
+static inline int decodePacked(Field *field, WireType wireType)
 {
     Buffer b = field->value;
     std::vector<Field> fields;
@@ -247,18 +246,24 @@ static inline int decodeField(Field *field, Buffer *in, bool packed)
         return decodeFixed64(field, in);
 
     case WIRETYPE_LEN:
+        // Try deconding as string, should always work for well formed WIRETYPE_LEN
         if (DECODE_OK != decodeString(field, in))
         {
             return DECODE_ERROR;
         }
 
-        // Try decoding sub fields if it fails revert to string and packed
-        if (DECODE_OK != tryDecodeSubField(field, packed) && packed)
+        // Try decoding as sub fields
+        if (DECODE_OK == decodeSubField(field, packed))
         {
-            // Add decoded packed repeted fields
-            tryDecodePacked(field, WIRETYPE_VARINT);
-            tryDecodePacked(field, WIRETYPE_I64);
-            tryDecodePacked(field, WIRETYPE_I32);
+            return DECODE_OK;
+        }
+
+        // Try decoding as packed repeated fields
+        if (packed)
+        {
+            decodePacked(field, WIRETYPE_VARINT);
+            decodePacked(field, WIRETYPE_I64);
+            decodePacked(field, WIRETYPE_I32);
         }
 
         return DECODE_OK;
@@ -276,11 +281,10 @@ static inline int decodeField(Field *field, Buffer *in, bool packed)
 Field decodeProtobuf(const Buffer &in, bool packed)
 {
     Field field;
-    field.parent = nullptr;
+    memset(&field, 0, sizeof(Field));
     field.wireType = WIRETYPE_LEN;
-    field.depth = 0;
     field.value = in;
-    tryDecodeSubField(&field, packed);
+    decodeSubField(&field, packed);
     return field;
 }
 
