@@ -15,7 +15,7 @@ To build the extension run the following command in the root directory
 - `cmake .. -DCMAKE_BUILD_TYPE=Release`
 - `cmake --build . --config=release`
 
-building the source code will generate a library `sqlite_protobuf.dll` or `sqlite_protobuf.so` (depending on operating system).
+building the source code will generate a library `sqlite_protobuf.dll`, `sqlite_protobuf.so` or `sqlite_protobuf.dylib` depending on your operating system.
 
 ## Using extension
 
@@ -24,7 +24,7 @@ This function deserializes the `protobuf` message, and returns the element at th
 
     SELECT protobuf_extract(protobuf, "$.1[2].3", "int32") AS value FROM messages;
 
-The return type of this function depends user specified `type`, if a value can not be decoded into the desired type, an error is thrown. Valid types include
+The return type of this function depends user specified `type`, if a value can not be decoded into the desired type, the function returns `NULL` rather than throwing an error. Valid types include
 - "int32" : extracts `int32` as INTEGER
 - "int64" : extracts `int64` as INTEGER
 - "uint32" : extracts `uint32` as INTEGER
@@ -71,13 +71,13 @@ The above example will return a table containing all the sub fields of the given
 | 24  | 3     | 0        | BLOB  | BLOB   |
 | ... | ...   | ...      | ...   | ...    |
 
-For the columns of the table, the `tag`, `field` and `wiretype` are all unsigned integers represent the [tag, field number and wire type][structure] of the sub fieleds in the given `protobuf` message. The `value` is the content of sub field given as a binary blob, and the `parent` is as a binary blob of the parent for the sub fields we are iterating over.
+For the columns of the table, the `tag`, `field` and `wiretype` are all unsigned integers representing the [tag, field number and wire type][structure] of the sub fieleds in the given `protobuf` message. The `value` is the content of sub field given as a binary blob, and the `parent` is as a binary blob of the parent of the sub fields we are iterating over.
 
 The `protobuf_foreach` function is desiged to be used together with other functions such as `protobuf_to_json` and `protobuf_extract`, like in the example below, where we iterate over all sub fields at the path `$.1[2].3`, and run `protobuf_extract(value, "$", "int32")` to extract the value.
 
     SELECT protobuf_extract(value, "$", "int32") AS number FROM protobuf_foreach(protobuf, "$.1[2].3");
 
-This is particularly usefull when we have repeated or packed repeated fields and we want particular values from all the repeated fields. Note that for repeated fields it is usefull to aditionally filter on the field number and [wire type][structure] `WHERE field = 1 AND wiretype = 0` in order to limit the results to only the desired field and type.
+This is particularly usefull when we have repeated or packed repeated fields and we want specific values from all the repeated fields. Note that for repeated fields it is usefull to aditionally filter on the field number and [wire type][structure] `WHERE field = 1 AND wiretype = 0` in order to limit the results to only the desired field and type.
 
 [vtab]: https://www.sqlite.org/vtab.html
 [structure]: https://protobuf.dev/programming-guides/encoding/#structure
