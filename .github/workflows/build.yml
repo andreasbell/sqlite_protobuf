@@ -120,7 +120,7 @@ jobs:
     - name: Build release
       run: |
         mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
         cmake --build . --config=release
     - uses: actions/upload-artifact@v4
       with:
@@ -134,7 +134,7 @@ jobs:
     - name: Build release
       run: |
         mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
         cmake --build . --config=release
     - uses: actions/upload-artifact@v4
       with:
