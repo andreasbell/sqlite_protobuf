@@ -2,6 +2,7 @@
 #include "sqlite3ext.h"
 
 #include <string>
+#include <cstring>
 
 #include "protodec.h"
 
@@ -116,7 +117,7 @@ namespace sqlite_protobuf
                 // Chache hit -> use the decoded field from cache
                 root = &cache.field;
             }
-            else if (length < PROTOBUF_CACHE_BUFFER_SIZE)
+            else if (length <= PROTOBUF_CACHE_BUFFER_SIZE)
             {
                 // Chache miss and buffer fits in cache -> decode protobuf and cache result
                 memcpy(cache.buffer, buffer.start, length);
