@@ -352,7 +352,10 @@ namespace sqlite_protobuf
 
     int register_protobuf_foreach(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi)
     {
-        return sqlite3_create_module(db, "protobuf_foreach", &protobufForeachModule, 0);
+        int rc = SQLITE_OK;
+        if(rc == SQLITE_OK) {rc = sqlite3_create_module(db, "protobuf_foreach", &protobufForeachModule, 0);}
+        if(rc == SQLITE_OK) {rc = sqlite3_create_module(db, "protobuf_each", &protobufForeachModule, 0);}
+        return rc;
     }
 
 } // namespace sqlite_protobuf

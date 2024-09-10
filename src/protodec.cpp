@@ -23,18 +23,26 @@ std::map< uint32_t, std::vector<Field *> > Field::subFieldMap()
 }
 
 Field* Field::getSubField(uint32_t fieldNumber, WireType wireType, int64_t index)
-{
-    auto m = subFieldMap();
-    auto fields = m.find(getTag(fieldNumber, wireType));
-    if (fields != m.end())
+{    
+    uint32_t tag = getTag(fieldNumber, wireType);
+    if (index >= 0) // Positive index, iterate forward through list
     {
-        // Wrap around for negative indexing
-        index = index < 0 ? fields->second.size() + index : index;
-
-        // Check that index is within range
-        if (index >= 0 && index < fields->second.size()) 
+        for (size_t i = 0; i < subFields.size(); i++)
         {
-            return fields->second[index];
+            if (subFields[i].tag == tag && index-- == 0)
+            {
+                return &subFields[i];
+            }
+        }
+    }
+    else // Negative index iterate backward through list
+    {
+        for (size_t i = 0; i < subFields.size(); i++)
+        {
+            if (subFields[subFields.size() - i].tag == tag && ++index == 0)
+            {
+                return &subFields[subFields.size() - i];
+            }
         }
     }
     return nullptr;
