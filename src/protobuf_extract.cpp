@@ -44,43 +44,108 @@ namespace sqlite_protobuf
             return std::string(text, text_size);
         }
         
-        Path path_from_string(const std::string &path)
+        Path path_from_string(const std::string &pathString)
         {
-            Path parsedPath;
+            Path path;
             int fieldNumber, fieldIndex;
 
-            parsedPath.pathString = path;
+            path.pathString = pathString;
 
             // Parse the path string and traverse the message
-            size_t fieldStart = path.find(".", 0);
-            while(fieldStart < path.size())
+            size_t fieldStart = pathString.find(".", 0);
+            while(fieldStart < pathString.size())
             {
-                size_t fieldEnd = path.find(".", fieldStart + 1);
-                size_t indexStart = path.find("[", fieldStart + 1);
-                size_t indexEnd = path.find("]", fieldStart + 1);
+                size_t fieldEnd = pathString.find(".", fieldStart + 1);
+                size_t indexStart = pathString.find("[", fieldStart + 1);
+                size_t indexEnd = pathString.find("]", fieldStart + 1);
 
-                fieldEnd = (fieldEnd == std::string::npos) ? path.size() : fieldEnd;
+                fieldEnd = (fieldEnd == std::string::npos) ? pathString.size() : fieldEnd;
 
                 if (indexStart < fieldEnd && indexEnd < fieldEnd) // Both field and index supplied
                 {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, indexStart - fieldStart - 1).c_str());
-                    fieldIndex  = std::atoi(path.substr(indexStart + 1, indexEnd - indexStart - 1).c_str());
+                    fieldNumber = std::atoi(pathString.substr(fieldStart + 1, indexStart - fieldStart - 1).c_str());
+                    fieldIndex  = std::atoi(pathString.substr(indexStart + 1, indexEnd - indexStart - 1).c_str());
                 }
                 else // Only field supplied
                 {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, fieldEnd - fieldStart - 1).c_str());
+                    fieldNumber = std::atoi(pathString.substr(fieldStart + 1, fieldEnd - fieldStart - 1).c_str());
                     fieldIndex  = 0; 
                 }
 
                 // Add path entry to end of list
-                parsedPath.fieldNumber.push_back(fieldNumber);
-                parsedPath.fieldIndex.push_back(fieldIndex);
+                path.fieldNumber.push_back(fieldNumber);
+                path.fieldIndex.push_back(fieldIndex);
 
                 // Move path ponter forward
                 fieldStart = fieldEnd;
             }
 
-            return parsedPath;          
+            return path;          
+        }
+
+        enum Type 
+        {
+            // WIRETYPE VARINT
+            TYPE_INT32,
+            TYPE_INT64,
+            TYPE_UINT32,
+            TYPE_UINT64,
+            TYPE_SINT32,
+            TYPE_SINT64,
+            TYPE_BOOL,
+            TYPE_ENUM,
+            // WIRETYPE I64
+            TYPE_FIXED64,
+            TYPE_SFIXED64,
+            TYPE_DOUBLE,
+            // WIRETYPE LEN
+            TYPE_STRING,
+            TYPE_BYTES,
+            // WIRETYPE I32
+            TYPE_FIXED32, 
+            TYPE_SFIXED32, 
+            TYPE_FLOAT,
+            // SPECIAL TYPES
+            TYPE_BUFFER,
+            TYPE_UNKNOWN,
+        };
+
+        Type type_from_string(const std::string &type)
+        {
+            
+            switch (type.length())
+            {
+            case 0: // ""
+                return TYPE_BUFFER;
+            case 4: // bool
+                if (type == "bool") {return TYPE_BOOL;}
+                if (type == "enum") {return TYPE_ENUM;}
+                return TYPE_UNKNOWN;
+            case 5: // bytes, int32, int64, float
+                if (type == "bytes") {return TYPE_BYTES;}
+                if (type == "int32") {return TYPE_INT32;}
+                if (type == "int64") {return TYPE_INT64;}
+                if (type == "float") {return TYPE_FLOAT;}
+                return TYPE_UNKNOWN;
+            case 6: // string, uint32, uint64, sint32, sint64, double
+                if (type == "string") {return TYPE_STRING;}
+                if (type == "uint32") {return TYPE_UINT32;}
+                if (type == "uint64") {return TYPE_UINT64;}
+                if (type == "sint32") {return TYPE_SINT32;}
+                if (type == "sint64") {return TYPE_SINT64;}
+                if (type == "double") {return TYPE_DOUBLE;}
+                return TYPE_UNKNOWN;
+            case 7: // fixed64, fixed32
+                if (type == "fixed64") {return TYPE_FIXED64;}
+                if (type == "fixed32") {return TYPE_FIXED32;}
+                return TYPE_UNKNOWN;
+            case 8: // sfixed64, sfixed32
+                if (type == "sfixed64") {return TYPE_SFIXED64;}
+                if (type == "sfixed32") {return TYPE_SFIXED32;}
+                return TYPE_UNKNOWN;
+            default:
+                return TYPE_UNKNOWN;
+            }
         }
 
         /// Return the element (or elements)
@@ -90,17 +155,23 @@ namespace sqlite_protobuf
         /// @returns a Protobuf-encoded BLOB or the appropriate SQL datatype
         static void protobuf_extract(sqlite3_context *context, int argc, sqlite3_value **argv)
         {
-            //sqlite3_result_int64(context, 0);
-            //return;
-
             sqlite3_value *data = argv[0];
-            const std::string path = string_from_sqlite3_value(argv[1]);
-            const std::string type = string_from_sqlite3_value(argv[2]);
+            const std::string pathString = string_from_sqlite3_value(argv[1]);
+            const std::string typeString = string_from_sqlite3_value(argv[2]);
+            Type type = type_from_string(typeString);
+            
 
             // Check that the path begins with $, representing the root of the tree
-            if (path.length() == 0 || path[0] != '$')
+            if (pathString.length() == 0 || pathString[0] != '$')
             {
-                sqlite3_result_error(context, "Invalid path", -1);
+                sqlite3_result_error(context, "Path not valid, path should start with $", -1);
+                return;
+            }
+            
+            // Check that the type is valid
+            if (type == TYPE_UNKNOWN)
+            {
+                sqlite3_result_error(context, "Type not valid, try type '' or check documentation", -1);
                 return;
             }
             
@@ -134,330 +205,149 @@ namespace sqlite_protobuf
             }
 
             // Look up path in cache
-            Path* parsedPath = nullptr;
+            Path* path = nullptr;
             for (size_t i = 0; i < PROTOBUF_CACHE_PATH_SIZE; i++)
             {
-                if (cache.path[i].pathString == path)
+                if (cache.path[i].pathString == pathString)
                 {
-                    parsedPath = &cache.path[i];
+                    path = &cache.path[i];
                     break;
                 }
             }
 
             // cache miss -> parse path and add to cache
-            if (parsedPath == nullptr)
+            if (path == nullptr)
             {
                 cache.index = (cache.index + 1) % PROTOBUF_CACHE_PATH_SIZE;
-                cache.path[cache.index] = path_from_string(path);
-                parsedPath = &cache.path[cache.index];
+                cache.path[cache.index] = path_from_string(pathString);
+                path = &cache.path[cache.index];
             }
             
             // Traverse path to the desired field
             Field *field = root;
-            for (size_t i = 0; i < parsedPath->fieldNumber.size() - 1; i++)
+            Field *parent = nullptr;
+            for (size_t i = 0; i < path->fieldNumber.size(); i++)
             {
-                field = field->getSubField(parsedPath->fieldNumber[i], WIRETYPE_LEN, parsedPath->fieldIndex[i]);
+                if (i < path->fieldNumber.size() - 1)
+                {
+                    field = field->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);
+                }
+                else
+                {
+                    switch (type)
+                    {
+                    case TYPE_BUFFER:
+                        // We don't know the wire type, so try all until one succeeds
+                        parent = field;
+                        field = nullptr;
+                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);}
+                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_VARINT, path->fieldIndex[i]);}
+                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_I64, path->fieldIndex[i]);}
+                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_I32, path->fieldIndex[i]);}
+                        break;
+                    case TYPE_STRING:
+                    case TYPE_BYTES:
+                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);
+                        break;
+                    case TYPE_INT32:
+                    case TYPE_INT64:
+                    case TYPE_UINT32:
+                    case TYPE_UINT64:
+                    case TYPE_SINT32:
+                    case TYPE_SINT64:
+                    case TYPE_BOOL:
+                    case TYPE_ENUM:
+                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_VARINT, path->fieldIndex[i]);
+                        break;
+                    case TYPE_FIXED64:
+                    case TYPE_SFIXED64:
+                    case TYPE_DOUBLE:
+                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_I64, path->fieldIndex[i]);
+                        break;
+                    case TYPE_FIXED32:
+                    case TYPE_SFIXED32:
+                    case TYPE_FLOAT:
+                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_I32, path->fieldIndex[i]);
+                        break;
+                    default:
+                        field = nullptr;
+                        break;
+                    }
+                }
+
                 if (field == nullptr) {return;}
             }
-            // Traverse last field based on type
-            int fieldNumber = parsedPath->fieldNumber[parsedPath->fieldNumber.size() - 1];
-            int fieldIndex = parsedPath->fieldIndex[parsedPath->fieldIndex.size() - 1];
 
+            // Create result buffer pointing to correct memmory address
             Buffer result;
+            result.start = field->value.start + (buffer.start - root->value.start);
+            result.end = field->value.end + (buffer.start - root->value.start);
 
-            // Extract raw buffer
-            if (type == "")
+            // Extract data from buffer based on selected type
+            int32_t valueInt32 = 0;
+            int64_t valueInt64 = 0;
+            uint32_t valueUint32 = 0;
+            uint64_t valueUint64 = 0;
+            double valueDouble = 0;
+            float valueFloat = 0;
+            bool valueBool = 0;
+
+            switch (type)
             {
-                Field *parent = field;
-                field = nullptr;
-
-                // We don't know the wire type, so try all untill one succeeds
-                if (field == nullptr) {field = parent->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);}
-                if (field == nullptr) {field = parent->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);}
-                if (field == nullptr) {field = parent->getSubField(fieldNumber, WIRETYPE_I64, fieldIndex);}
-                if (field == nullptr) {field = parent->getSubField(fieldNumber, WIRETYPE_I32, fieldIndex);}
-                if (field == nullptr) {return;}
-
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
+            case TYPE_BUFFER:
                 sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
                 return;
-            }
-
-            // Extract extract WIRETYPE_LEN
-            if (type == "string")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-                
-                // Return result
+            case TYPE_STRING:
                 sqlite3_result_text(context, (char *)result.start, result.size(), SQLITE_STATIC);
                 return;
-            }
-            if (type == "bytes")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-                
-                // Return result
+            case TYPE_BYTES:
                 sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
                 return;
+            case TYPE_ENUM:
+            case TYPE_INT32:
+                if (getInt32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                return;
+            case TYPE_INT64:
+                if (getInt64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                return;
+            case TYPE_UINT32:
+                if (getUint32(&result, &valueUint32)) {sqlite3_result_int64(context, valueUint32);}
+                return;
+            case TYPE_UINT64:
+                if (getUint64(&result, &valueUint64)) {sqlite3_result_int64(context, valueUint64);}
+                if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
+                return;
+            case TYPE_SINT32:
+                if (getSint32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                return;
+            case TYPE_SINT64:
+                if (getSint64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                return;
+            case TYPE_BOOL:
+                if (getBool(&result, &valueBool)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
+                return;
+            case TYPE_FIXED64:
+                if (getFixed64(&result, &valueUint64)) {sqlite3_result_int64(context, valueUint64);}
+                if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
+                return;
+            case TYPE_SFIXED64:
+                if (getSfixed64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                return;
+            case TYPE_DOUBLE:
+                if (getDouble(&result, &valueDouble)) {sqlite3_result_double(context, valueDouble);}
+                return;
+            case TYPE_FIXED32:
+                if (getFixed32(&result, &valueUint32)) {sqlite3_result_int64(context, valueUint32);}
+                return;
+            case TYPE_SFIXED32:
+                if (getSfixed32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                return;
+            case TYPE_FLOAT:
+                if (getFloat(&result, &valueFloat)) {sqlite3_result_double(context, valueFloat);}
+                return;
+            default:
+                return;
             }
-
-            // Extract WIRETYPE_VARINT
-            if (type == "int32")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                int32_t value;
-                if (getInt32(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "int64")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                int64_t value;
-                if (getInt64(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "uint32")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                uint32_t value;
-                if (getUint32(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "uint64")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                uint64_t value;
-                if (getUint64(&result, &value))
-                {
-                    if (value > INT64_MAX)
-                    {
-                        sqlite3_log(SQLITE_WARNING,
-                                    "Protobuf type is unsigned, but SQLite does not support "
-                                    "unsigned types. Value %llu doesn't fit in an int64.",
-                                    value);
-                    }
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "sint32")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                int32_t value;
-                if (getSint32(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "sint64")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                int64_t value;
-                if (getSint64(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "bool")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_VARINT, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                bool value;
-                if (getBool(&result, &value))
-                {
-                    sqlite3_result_int64(context, value ? 1 : 0);
-                    return;
-                }
-            }
-
-            // Extract WIRETYPE_I64
-            if (type == "fixed64")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I64, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                uint64_t value;
-                if (getFixed64(&result, &value))
-                {
-                    if (value > INT64_MAX)
-                    {
-                        sqlite3_log(SQLITE_WARNING,
-                                    "Protobuf type is unsigned, but SQLite does not support "
-                                    "unsigned types. Value %llu doesn't fit in an int64.",
-                                    value);
-                    }
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "sfixed64")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I64, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-                
-                int64_t value;
-                if (getSfixed64(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "double")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I64, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                double value;
-                if (getDouble(&result, &value))
-                {
-                    sqlite3_result_double(context, value);
-                    return;
-                }
-            }
-
-            // Extract WIRETYPE_I32
-            if (type == "fixed32")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I32, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                uint32_t value;
-                if (getFixed32(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "sfixed32")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I32, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                int32_t value;
-                if (getSfixed32(&result, &value))
-                {
-                    sqlite3_result_int64(context, value);
-                    return;
-                }
-            }
-            if (type == "float")
-            {
-                // Extract correct wire type
-                field = field->getSubField(fieldNumber, WIRETYPE_I32, fieldIndex);
-                if(field == nullptr){return;}
-                
-                // Point result buffer to correct memmory address
-                result.start = field->value.start + (buffer.start - root->value.start);
-                result.end = field->value.end + (buffer.start - root->value.start);
-
-                float value;
-                if (getFloat(&result, &value))
-                {
-                    sqlite3_result_double(context, value);
-                    return;
-                }
-            }
-
-            return;
         }
     } // namespace
 
