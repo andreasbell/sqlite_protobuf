@@ -142,7 +142,7 @@ static inline int decodeVarint(Field *field, Buffer *in)
 
 static inline int decodeFixed64(Field *field, Buffer *in)
 {
-    if (in->size() < static_cast<int>(sizeof(int64_t)))
+    if (in->start + sizeof(int64_t) > in->end)
     {
         return DECODE_ERROR;
     }
@@ -155,7 +155,8 @@ static inline int decodeFixed64(Field *field, Buffer *in)
 
 static inline int decodeFixed32(Field *field, Buffer *in)
 {
-    if (in->size() < static_cast<int>(sizeof(int32_t)))
+
+    if (in->start + sizeof(int32_t) > in->end)
     {
         return DECODE_ERROR;
     }
@@ -171,7 +172,7 @@ static inline int decodeString(Field *field, Buffer *in)
     int64_t length;
     const uint8_t *ptr = readVarint(in, &length, MAX_VARINT_32BYTES);
 
-    if (!ptr || static_cast<int>(length) > in->size())
+    if (!ptr || ptr + length > in->end)
     {
         return DECODE_ERROR;
     }
@@ -194,7 +195,7 @@ static inline int decodeSubField(Field *field, bool packed)
         subField.depth = field->depth + 1;
         subField.parent = field;
 
-        if (!subField.tag || !subField.fieldNum)
+        if (subField.fieldNum == 0) // Invalid field number
         {
             field->subFields.clear();
             return DECODE_ERROR;
@@ -215,32 +216,43 @@ static inline int decodeSubField(Field *field, bool packed)
 static inline int decodePacked(Field *field, WireType wireType)
 {
     Buffer b = field->value;
-    std::vector<Field> fields;
 
-    if (WIRETYPE_VARINT == wireType || WIRETYPE_I32 == wireType || WIRETYPE_I64 == wireType)
+    // Check if buffer data fits with packed wiretype
+    switch (wireType)
     {
-        while (b.start < b.end)
-        {
-            Field subField;
-            subField.tag = getTag(field->fieldNum, wireType);
-            subField.fieldNum = getTagFieldNumber(subField.tag);
-            subField.wireType = getTagWireType(subField.tag);
-            subField.depth = field->depth;
-            subField.parent = field->parent;
-
-            if (DECODE_OK != decodeField(&subField, &b, true))
-            {
-                return DECODE_ERROR;
-            }
-            fields.push_back(subField);
-        }
-
-        // field is a length delimited repsesentation of the packed repeted field, so add them to parent
-        field->parent->subFields.insert(field->parent->subFields.end(), fields.begin(), fields.end());
-
-        return DECODE_OK;
+    case WIRETYPE_VARINT:
+        break;
+    case WIRETYPE_I32:
+        if ((b.end - b.start) % sizeof(int32_t) != 0) {return DECODE_ERROR;}
+        break;
+    case WIRETYPE_I64:
+        if ((b.end - b.start) % sizeof(int64_t) != 0) {return DECODE_ERROR;}
+        break;
+    default:
+        return DECODE_ERROR;
     }
-    return DECODE_ERROR;
+
+    size_t sizeBeforeDecode = field->parent->subFields.size();
+    while (b.start < b.end)
+    {
+        Field subField;
+        subField.tag = getTag(field->fieldNum, wireType);
+        subField.fieldNum = getTagFieldNumber(subField.tag);
+        subField.wireType = getTagWireType(subField.tag);
+        subField.depth = field->depth;
+        subField.parent = field->parent;
+
+        if (DECODE_OK != decodeField(&subField, &b, true))
+        {
+            // Remove the fields that were added since it can not be a packed repeted field
+            field->parent->subFields.resize(sizeBeforeDecode);
+            return DECODE_ERROR;
+        }
+        // field is a length delimited representation of the packed repeted field, so add them to parent
+        field->parent->subFields.push_back(subField);
+    }
+
+    return DECODE_OK;
 }
 
 static inline int decodeField(Field *field, Buffer *in, bool packed)

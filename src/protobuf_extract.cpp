@@ -14,14 +14,12 @@ namespace sqlite_protobuf
     {
         struct Path
         {
-            std::string pathString;
-            std::vector<int> fieldNumber;
-            std::vector<int> fieldIndex;
+            uint32_t fieldNumber;
+            int32_t fieldIndex;
         };
 
         // Create a global cache for saving data
         #define PROTOBUF_CACHE_BUFFER_SIZE 4096
-        #define PROTOBUF_CACHE_PATH_SIZE 64
 
         struct Cache
         {
@@ -29,10 +27,6 @@ namespace sqlite_protobuf
             Field field;
             size_t length;
             uint8_t buffer[PROTOBUF_CACHE_BUFFER_SIZE];
-
-            // Path parse cache
-            size_t index;
-            Path path[PROTOBUF_CACHE_PATH_SIZE];
         };
 
         Cache cache = {0};
@@ -44,12 +38,19 @@ namespace sqlite_protobuf
             return std::string(text, text_size);
         }
         
-        Path path_from_string(const std::string &pathString)
+        Path* path_from_string(const std::string &pathString)
         {
-            Path path;
-            int fieldNumber, fieldIndex;
+            // Check that the path begins with $, representing the root of the tree
+            if (pathString.length() == 0 || pathString[0] != '$')
+            {
+                return nullptr;
+            }
 
-            path.pathString = pathString;
+            size_t capacity = 1; // Start with 1 as initial capacity
+            size_t length = 0; // Initialize path length 0
+            Path* path = (Path*)sqlite3_malloc64(sizeof(Path) * capacity);
+
+            int fieldNumber, fieldIndex;
 
             // Parse the path string and traverse the message
             size_t fieldStart = pathString.find(".", 0);
@@ -73,18 +74,34 @@ namespace sqlite_protobuf
                 }
 
                 // Add path entry to end of list
-                path.fieldNumber.push_back(fieldNumber);
-                path.fieldIndex.push_back(fieldIndex);
+                if (path != nullptr)
+                {
+                    path[length].fieldNumber = fieldNumber;
+                    path[length].fieldIndex = fieldIndex;
+                    length++;
+                    if (length >= capacity)
+                    {
+                        // Double the capacity of the path vector
+                        capacity = capacity * 2;
+                        path = (Path*)sqlite3_realloc64(path, sizeof(Path) * capacity);
+                    }
+                }
 
                 // Move path ponter forward
                 fieldStart = fieldEnd;
             }
+
+            // Set fieldNumber to the reserved number 0 to indicate end of path 
+            if (path != nullptr) {path[length].fieldNumber = 0;}
 
             return path;          
         }
 
         enum Type 
         {
+            // SPECIAL TYPES
+            TYPE_UNKNOWN,
+            TYPE_BUFFER,
             // WIRETYPE VARINT
             TYPE_INT32,
             TYPE_INT64,
@@ -105,9 +122,6 @@ namespace sqlite_protobuf
             TYPE_FIXED32, 
             TYPE_SFIXED32, 
             TYPE_FLOAT,
-            // SPECIAL TYPES
-            TYPE_BUFFER,
-            TYPE_UNKNOWN,
         };
 
         Type type_from_string(const std::string &type)
@@ -155,30 +169,54 @@ namespace sqlite_protobuf
         /// @returns a Protobuf-encoded BLOB or the appropriate SQL datatype
         static void protobuf_extract(sqlite3_context *context, int argc, sqlite3_value **argv)
         {
-            sqlite3_value *data = argv[0];
-            const std::string pathString = string_from_sqlite3_value(argv[1]);
-            const std::string typeString = string_from_sqlite3_value(argv[2]);
-            Type type = type_from_string(typeString);
-            
 
-            // Check that the path begins with $, representing the root of the tree
-            if (pathString.length() == 0 || pathString[0] != '$')
+            // Look up type from aux data
+            Type type;
+            Type* typePtr = (Type*)sqlite3_get_auxdata(context, 2);
+            if (typePtr == nullptr)
             {
-                sqlite3_result_error(context, "Path not valid, path should start with $", -1);
-                return;
+                const std::string typeString = string_from_sqlite3_value(argv[2]);
+                type = type_from_string(typeString);
+                typePtr = (Type*)sqlite3_malloc64(sizeof(Type));
+                if (typePtr != nullptr)
+                {
+                    *typePtr = type;
+                    // Set type aux data since we no longer need the type pointer
+                    sqlite3_set_auxdata(context, 2, typePtr, sqlite3_free);
+                }
             }
-            
-            // Check that the type is valid
+            else
+            {
+                type = *typePtr;
+            }
+
+            // Check validity of type
             if (type == TYPE_UNKNOWN)
             {
                 sqlite3_result_error(context, "Type not valid, try type '' or check documentation", -1);
                 return;
             }
+
+            // Look up path from aux data
+            bool setPathAuxData = false;
+            Path* path = (Path*)sqlite3_get_auxdata(context, 1);
+            if (path == nullptr)
+            {
+                const std::string pathString = string_from_sqlite3_value(argv[1]);
+                path = path_from_string(pathString);
+                setPathAuxData = true;
+            }
+
+            // Check validity of path
+            if (path == nullptr){
+                sqlite3_result_error(context, "Path not valid, path should start with $", -1);
+                return;
+            }
             
             // Load protobuf data into a buffer
             Buffer buffer;
-            size_t length = static_cast<size_t>(sqlite3_value_bytes(data));
-            buffer.start = static_cast<const uint8_t *>(sqlite3_value_blob(data));
+            size_t length = static_cast<size_t>(sqlite3_value_bytes(argv[0]));
+            buffer.start = static_cast<const uint8_t *>(sqlite3_value_blob(argv[0]));
             buffer.end = buffer.start + length;
 
             // Look up message in cache
@@ -203,34 +241,15 @@ namespace sqlite_protobuf
                 cache.field = decodeProtobuf(buffer, true);
                 root = &cache.field;
             }
-
-            // Look up path in cache
-            Path* path = nullptr;
-            for (size_t i = 0; i < PROTOBUF_CACHE_PATH_SIZE; i++)
-            {
-                if (cache.path[i].pathString == pathString)
-                {
-                    path = &cache.path[i];
-                    break;
-                }
-            }
-
-            // cache miss -> parse path and add to cache
-            if (path == nullptr)
-            {
-                cache.index = (cache.index + 1) % PROTOBUF_CACHE_PATH_SIZE;
-                cache.path[cache.index] = path_from_string(pathString);
-                path = &cache.path[cache.index];
-            }
             
             // Traverse path to the desired field
             Field *field = root;
             Field *parent = nullptr;
-            for (size_t i = 0; i < path->fieldNumber.size(); i++)
+            for (size_t i = 0; path[i].fieldNumber != 0; i++)
             {
-                if (i < path->fieldNumber.size() - 1)
+                if (path[i+1].fieldNumber != 0) // Not at end of path
                 {
-                    field = field->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);
+                    field = field->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
                 }
                 else
                 {
@@ -240,14 +259,14 @@ namespace sqlite_protobuf
                         // We don't know the wire type, so try all until one succeeds
                         parent = field;
                         field = nullptr;
-                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);}
-                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_VARINT, path->fieldIndex[i]);}
-                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_I64, path->fieldIndex[i]);}
-                        if (field == nullptr) {field = parent->getSubField(path->fieldNumber[i], WIRETYPE_I32, path->fieldIndex[i]);}
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);}
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);}
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);}
                         break;
                     case TYPE_STRING:
                     case TYPE_BYTES:
-                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_LEN, path->fieldIndex[i]);
+                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
                         break;
                     case TYPE_INT32:
                     case TYPE_INT64:
@@ -257,17 +276,17 @@ namespace sqlite_protobuf
                     case TYPE_SINT64:
                     case TYPE_BOOL:
                     case TYPE_ENUM:
-                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_VARINT, path->fieldIndex[i]);
+                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
                         break;
                     case TYPE_FIXED64:
                     case TYPE_SFIXED64:
                     case TYPE_DOUBLE:
-                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_I64, path->fieldIndex[i]);
+                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
                         break;
                     case TYPE_FIXED32:
                     case TYPE_SFIXED32:
                     case TYPE_FLOAT:
-                        field = field->getSubField(path->fieldNumber[i], WIRETYPE_I32, path->fieldIndex[i]);
+                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
                         break;
                     default:
                         field = nullptr;
@@ -275,10 +294,17 @@ namespace sqlite_protobuf
                     }
                 }
 
-                if (field == nullptr) {return;}
+                if (field == nullptr) {break;}
+            }
+
+            // Set path aux data, needs to be done after path no longer is needed (see sqlite documentation)
+            if (setPathAuxData)
+            {
+                sqlite3_set_auxdata(context, 1, path, sqlite3_free);
             }
 
             // Create result buffer pointing to correct memmory address
+            if (field == nullptr) {return;}
             Buffer result;
             result.start = field->value.start + (buffer.start - root->value.start);
             result.end = field->value.end + (buffer.start - root->value.start);
