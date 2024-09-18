@@ -1,5 +1,3 @@
-<meta name="google-site-verification" content="rz4VEh3vcEH7GHpGUxl6uICoXn0fzROEnP-6zq78QOQ" />
-
 # Protobuf Extension for SQLite
 This project implements a [run-time loadable extension][ext] for [SQLite][]. It
 allows SQLite to perform queries that can extract field values out of stored
