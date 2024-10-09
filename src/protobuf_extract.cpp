@@ -247,9 +247,12 @@ namespace sqlite_protobuf
             Field *parent = nullptr;
             for (size_t i = 0; path[i].fieldNumber != 0; i++)
             {
+                parent = field;
+                field = nullptr;
                 if (path[i+1].fieldNumber != 0) // Not at end of path
                 {
-                    field = field->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
+                    if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
+                    if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
                 }
                 else
                 {
@@ -257,16 +260,15 @@ namespace sqlite_protobuf
                     {
                     case TYPE_BUFFER:
                         // We don't know the wire type, so try all until one succeeds
-                        parent = field;
-                        field = nullptr;
                         if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
                         if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);}
                         if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);}
                         if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);}
                         break;
                     case TYPE_STRING:
                     case TYPE_BYTES:
-                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
+                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
                         break;
                     case TYPE_INT32:
                     case TYPE_INT64:
@@ -276,17 +278,17 @@ namespace sqlite_protobuf
                     case TYPE_SINT64:
                     case TYPE_BOOL:
                     case TYPE_ENUM:
-                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
+                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
                         break;
                     case TYPE_FIXED64:
                     case TYPE_SFIXED64:
                     case TYPE_DOUBLE:
-                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
+                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
                         break;
                     case TYPE_FIXED32:
                     case TYPE_SFIXED32:
                     case TYPE_FLOAT:
-                        field = field->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
+                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
                         break;
                     default:
                         field = nullptr;

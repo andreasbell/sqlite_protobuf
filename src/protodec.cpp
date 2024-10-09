@@ -10,7 +10,21 @@
 #define MAX_VARINT_32BYTES 5
 
 static int decodeField(Field *field, Buffer *in, bool packed);
-static uint32_t getTag(uint32_t fieldNumber, WireType wireType);
+
+static inline uint32_t getTag(uint32_t fieldNumber, WireType wireType)
+{
+    return (fieldNumber << TAG_BITS) | wireType;
+}
+
+static inline int getWireType(uint32_t tag)
+{
+    return tag & ((1 << TAG_BITS) - 1);
+}
+
+static inline int getFieldNumber(uint32_t tag)
+{
+    return tag >> TAG_BITS;
+}
 
 std::map< uint32_t, std::vector<Field *> > Field::subFieldMap()
 {
@@ -83,41 +97,6 @@ static inline const uint8_t *readVarint(const Buffer *in, int64_t *out, size_t m
     return nullptr;
 }
 
-static inline uint32_t getTag(Buffer *b)
-{
-    int64_t tag;
-    const uint8_t *ptr = readVarint(b, &tag, MAX_VARINT_32BYTES);
-    if (nullptr != ptr)
-    {
-        // Advance buffer if valid varint
-        b->start = ptr;
-    }
-    return (uint32_t)tag;
-}
-
-static inline uint32_t getTag(uint32_t fieldNumber, WireType wireType)
-{
-    return (fieldNumber << TAG_BITS) | wireType;
-}
-
-static inline int getTagWireType(uint32_t tag)
-{
-    return tag & ((1 << TAG_BITS) - 1);
-}
-
-static inline int getTagFieldNumber(uint32_t tag)
-{
-    return tag >> TAG_BITS;
-}
-
-static inline void initField(Field *field, Buffer *in)
-{
-    memset(field, 0, sizeof(Field));
-    field->tag = getTag(in);
-    field->fieldNum = getTagFieldNumber(field->tag);
-    field->wireType = getTagWireType(field->tag);
-}
-
 static inline int decodeVarint(Field *field, Buffer *in)
 {
     const uint8_t *p;
@@ -187,20 +166,38 @@ static inline int decodeString(Field *field, Buffer *in)
 static inline int decodeSubField(Field *field, bool packed)
 {
     Buffer b = field->value;
+    Field subField;
+    int64_t tag;
 
     while (b.start < b.end)
     {
-        Field subField;
-        initField(&subField, &b);
+        // Read tag from buffer
+        const uint8_t *ptr = readVarint(&b, &tag, MAX_VARINT_32BYTES);
+
+        // Initialize sub field
+        subField.tag = (uint32_t)tag;
+        subField.fieldNum = getFieldNumber(subField.tag);
+        subField.wireType = getWireType(subField.tag);
+        subField.subFields.clear();
         subField.depth = field->depth + 1;
         subField.parent = field;
 
-        if (subField.fieldNum == 0) // Invalid field number
+        // Check validity of field tag
+        if (subField.fieldNum == 0)
         {
             field->subFields.clear();
             return DECODE_ERROR;
         }
 
+        // Check if we have reached end of a group
+        if (field->wireType == WIRETYPE_SGROUP && subField.wireType == WIRETYPE_EGROUP)
+        {
+            field->value.end = b.start;
+            return DECODE_OK;
+        }
+
+        // Advance buffer past tag and decode field
+        b.start = ptr;
         if (DECODE_OK != decodeField(&subField, &b, packed))
         {
             field->subFields.clear();
@@ -237,8 +234,8 @@ static inline int decodePacked(Field *field, WireType wireType)
     {
         Field subField;
         subField.tag = getTag(field->fieldNum, wireType);
-        subField.fieldNum = getTagFieldNumber(subField.tag);
-        subField.wireType = getTagWireType(subField.tag);
+        subField.fieldNum = getFieldNumber(subField.tag);
+        subField.wireType = getWireType(subField.tag);
         subField.depth = field->depth;
         subField.parent = field->parent;
 
@@ -253,6 +250,31 @@ static inline int decodePacked(Field *field, WireType wireType)
     }
 
     return DECODE_OK;
+}
+
+static inline int decodeGroup(Field *field, Buffer *in, bool packed)
+{
+    int64_t tag;
+
+    field->value.start = in->start;
+    field->value.end = in->end;
+
+    if (DECODE_OK != decodeSubField(field, packed))
+    {
+        return DECODE_ERROR;
+    }
+
+    in->start = field->value.end;
+
+    // Read group end tag and check that it matches group start tag
+    const uint8_t *ptr = readVarint(in, &tag, MAX_VARINT_32BYTES);
+    if (ptr && tag == getTag(field->fieldNum, WIRETYPE_EGROUP))
+    {
+        in->start = ptr;
+        return DECODE_OK;
+    }
+
+    return DECODE_ERROR;
 }
 
 static inline int decodeField(Field *field, Buffer *in, bool packed)
@@ -290,6 +312,9 @@ static inline int decodeField(Field *field, Buffer *in, bool packed)
 
     case WIRETYPE_I32:
         return decodeFixed32(field, in);
+
+    case WIRETYPE_SGROUP:
+        return decodeGroup(field, in, packed);
 
     default:
         return DECODE_ERROR;
@@ -353,10 +378,10 @@ void toJson(Field *field, std::ostream &os, bool showType)
         auto m = field->subFieldMap();
         for (auto it = m.begin(); it != m.end(); it)
         {
-            os << "\"" << getTagFieldNumber(it->first);
+            os << "\"" << getFieldNumber(it->first);
             if (showType)
             {
-                os << "_" << getTagWireType(it->first); 
+                os << "_" << getWireType(it->first); 
             }
             os << "\":";
             if (it->second.size() > 1)

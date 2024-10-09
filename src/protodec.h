@@ -13,9 +13,9 @@ enum WireType
     WIRETYPE_I64 = 1,
     // string, bytes, embedded messages, packed repeated fields
     WIRETYPE_LEN = 2,
-    // group start (deprecated) not implemented
+    // group start (deprecated)
     WIRETYPE_SGROUP = 3,
-    // group end (deprecated) not implemented
+    // group end (deprecated)
     WIRETYPE_EGROUP = 4,
     // fixed32, sfixed32, float
     WIRETYPE_I32 = 5,

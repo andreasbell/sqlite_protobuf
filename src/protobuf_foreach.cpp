@@ -218,6 +218,7 @@ namespace sqlite_protobuf
             // Parse the path string and traverse the message
             int fieldNumber, fieldIndex;
             size_t fieldStart = path.find(".", 0);
+            Field* parent = nullptr;
             while(fieldStart < path.size())
             {
                 size_t fieldEnd = path.find(".", fieldStart + 1);
@@ -240,7 +241,10 @@ namespace sqlite_protobuf
                 // Move path ponter forward
                 fieldStart = fieldEnd;
 
-                pCur->root = pCur->root->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);
+                parent = pCur->root;
+                pCur->root = nullptr;
+                if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);}
+                if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_SGROUP, fieldIndex);}
                 if (pCur->root == nullptr) {break;}
             }
         }
