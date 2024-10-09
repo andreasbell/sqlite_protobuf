@@ -221,7 +221,7 @@ namespace sqlite_protobuf
 
             // Look up message in cache
             Field* root = nullptr;
-            if (cache.length == length && memcmp(&cache.buffer, buffer.start, length) == 0)
+            if (cache.length != 0 && cache.length == length && memcmp(&cache.buffer, buffer.start, length) == 0)
             {
                 // Chache hit -> use the decoded field from cache
                 root = &cache.field;
