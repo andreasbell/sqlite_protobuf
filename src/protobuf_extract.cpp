@@ -230,7 +230,7 @@ namespace sqlite_protobuf
             {
                 // Chache miss and buffer fits in cache -> decode protobuf and cache result
                 memcpy(cache.buffer, buffer.start, length);
-                cache.field = decodeProtobuf(buffer, true);
+                cache.field = decodeProtobuf(buffer, false);
                 cache.length = length;
                 root = &cache.field;
             }
@@ -238,13 +238,14 @@ namespace sqlite_protobuf
             {
                 // Chache miss, but buffer does not fit in cache -> decode protobuf and invalidate cache
                 cache.length = 0;
-                cache.field = decodeProtobuf(buffer, true);
+                cache.field = decodeProtobuf(buffer, false);
                 root = &cache.field;
             }
             
             // Traverse path to the desired field
             Field *field = root;
             Field *parent = nullptr;
+            int32_t index = 0;
             for (size_t i = 0; path[i].fieldNumber != 0; i++)
             {
                 parent = field;
@@ -279,16 +280,19 @@ namespace sqlite_protobuf
                     case TYPE_BOOL:
                     case TYPE_ENUM:
                         field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     case TYPE_FIXED64:
                     case TYPE_SFIXED64:
                     case TYPE_DOUBLE:
                         field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     case TYPE_FIXED32:
                     case TYPE_SFIXED32:
                     case TYPE_FLOAT:
                         field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
+                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     default:
                         field = nullptr;
@@ -333,45 +337,45 @@ namespace sqlite_protobuf
                 return;
             case TYPE_ENUM:
             case TYPE_INT32:
-                if (getInt32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                if (getInt32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 return;
             case TYPE_INT64:
-                if (getInt64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                if (getInt64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 return;
             case TYPE_UINT32:
-                if (getUint32(&result, &valueUint32)) {sqlite3_result_int64(context, valueUint32);}
+                if (getUint32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
                 return;
             case TYPE_UINT64:
-                if (getUint64(&result, &valueUint64)) {sqlite3_result_int64(context, valueUint64);}
+                if (getUint64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
                 return;
             case TYPE_SINT32:
-                if (getSint32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                if (getSint32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 return;
             case TYPE_SINT64:
-                if (getSint64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                if (getSint64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 return;
             case TYPE_BOOL:
-                if (getBool(&result, &valueBool)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
+                if (getBool(&result, &valueBool, index)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
                 return;
             case TYPE_FIXED64:
-                if (getFixed64(&result, &valueUint64)) {sqlite3_result_int64(context, valueUint64);}
+                if (getFixed64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
                 return;
             case TYPE_SFIXED64:
-                if (getSfixed64(&result, &valueInt64)) {sqlite3_result_int64(context, valueInt64);}
+                if (getSfixed64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 return;
             case TYPE_DOUBLE:
-                if (getDouble(&result, &valueDouble)) {sqlite3_result_double(context, valueDouble);}
+                if (getDouble(&result, &valueDouble, index)) {sqlite3_result_double(context, valueDouble);}
                 return;
             case TYPE_FIXED32:
-                if (getFixed32(&result, &valueUint32)) {sqlite3_result_int64(context, valueUint32);}
+                if (getFixed32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
                 return;
             case TYPE_SFIXED32:
-                if (getSfixed32(&result, &valueInt32)) {sqlite3_result_int(context, valueInt32);}
+                if (getSfixed32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 return;
             case TYPE_FLOAT:
-                if (getFloat(&result, &valueFloat)) {sqlite3_result_double(context, valueFloat);}
+                if (getFloat(&result, &valueFloat, index)) {sqlite3_result_double(context, valueFloat);}
                 return;
             default:
                 return;

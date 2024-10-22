@@ -69,16 +69,16 @@ void toJson(Field *field, std::ostream &os, bool showType = false);
  * @param[out] out decoded value
  * @return int success
  */
-int getInt32(const Buffer *in, int32_t *out);
-int getInt64(const Buffer *in, int64_t *out);
-int getUint32(const Buffer *in, uint32_t *out);
-int getUint64(const Buffer *in, uint64_t *out);
-int getSint32(const Buffer *in, int32_t *out);
-int getSint64(const Buffer *in, int64_t *out);
-int getBool(const Buffer *in, bool *out);
-int getFixed64(const Buffer *in, uint64_t *out);
-int getSfixed64(const Buffer *in, int64_t *out);
-int getDouble(const Buffer *in, double *out);
-int getFixed32(const Buffer *in, uint32_t *out);
-int getSfixed32(const Buffer *in, int32_t *out);
-int getFloat(const Buffer *in, float *out);
+int getInt32(const Buffer *in, int32_t *out, int64_t index);
+int getInt64(const Buffer *in, int64_t *out, int64_t index);
+int getUint32(const Buffer *in, uint32_t *out, int64_t index);
+int getUint64(const Buffer *in, uint64_t *out, int64_t index);
+int getSint32(const Buffer *in, int32_t *out, int64_t index);
+int getSint64(const Buffer *in, int64_t *out, int64_t index);
+int getBool(const Buffer *in, bool *out, int64_t index);
+int getFixed64(const Buffer *in, uint64_t *out, int64_t index);
+int getSfixed64(const Buffer *in, int64_t *out, int64_t index);
+int getDouble(const Buffer *in, double *out, int64_t index);
+int getFixed32(const Buffer *in, uint32_t *out, int64_t index);
+int getSfixed32(const Buffer *in, int32_t *out, int64_t index);
+int getFloat(const Buffer *in, float *out, int64_t index);
