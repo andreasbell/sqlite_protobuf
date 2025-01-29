@@ -11,13 +11,19 @@ add_library(${PROJECT_NAME} SHARED
     src/protodec.cpp
 )
 
-#add_executable(test
-#  src/main.cpp
-#  src/protodec.cpp
-#)
+add_executable(test_protodec
+  test/test.cpp
+  src/protodec.cpp
+)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/sqlite3
 )
+
+enable_testing()
+add_test(NAME test_protodec COMMAND $<TARGET_FILE:test_protodec>)
+#foreach(i RANGE 0 13)
+#    add_test(NAME test_protodec_${i} COMMAND $<TARGET_FILE:test_protodec> ${i})
+#endforeach()
