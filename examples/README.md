@@ -3,7 +3,9 @@ The `AddressBook.sqlite` contains a demonstration of how the SQLite together wit
 
 ## Raw protobuf data
 The `protobufs` table contains the raw serialized protobuf data as a binary blob. 
+
 ![protobuf data](protobufs.png)
+
 For this example each entry is corresponds to a person, generated using the `person.proto` given below:
 
 ```protobuf
@@ -32,15 +34,21 @@ message Person {
 It is not nessisary to know the `person.proto` file to be able to use the `sqlite_protobuf` extension, however it can be usfull when making sense of the decoded protobuf data. 
 
 ## Viewing JSON representation of the protobuf data
-The `sqlite_protobuf` extension can be used to generate a human readable `JSON` representation of the data. ![json view](json.png)
-In the the `AddressBook.sqlite` file we have created this as a SQLite `VIEW` of the json representation of the protobuf data using the following query:
+The `sqlite_protobuf` extension can be used to generate a human readable `JSON` representation of the data. 
+
+![json view](json.png)
+
+In the `AddressBook.sqlite` file we have created this as a SQLite `VIEW` of the json representation of the protobuf data using the following query:
 ```sql
 CREATE VIEW json AS SELECT protobuf_to_json(protobuf) AS json FROM protobufs
 ```
 
 ## Creating custom views of the protobuf data
-The `sqlite_protobuf` extension can be used to create custom views of the sqlite data for example it might be useful to create a table containing one entry for each phone number in the address book. ![custom view](addressbook.png)
-In the the `AddressBook.sqlite` file we have created this custom SQLite `VIEW` of the protobuf data using the following query:
+The `sqlite_protobuf` extension can be used to create custom views of the sqlite data for example it might be useful to create a table containing one entry for each phone number in the address book. 
+
+![custom view](addressbook.png)
+
+In the `AddressBook.sqlite` file we have created this custom SQLite `VIEW` of the protobuf data using the following query:
 ```sql
 CREATE VIEW addressbook as
 SELECT 
