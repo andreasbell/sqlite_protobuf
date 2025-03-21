@@ -55,6 +55,10 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config=release
 ```
+After building, the unit tests can be run with:
+```bash
+ctest -C Release --output-on-failure
+```
 
 building the source code will generate a library `sqlite_protobuf.dll`, `sqlite_protobuf.so` or `sqlite_protobuf.dylib` depending on your operating system.
 
