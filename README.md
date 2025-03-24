@@ -36,7 +36,7 @@ In [python][] you can load the extension with:
 import sqlite3
 db = sqlite3.connect('my_database.db')
 db.enable_load_extension(True)
-db.load_extension('sqlite_protobuf')
+db.load_extension('./sqlite_protobuf')
 ```
 
 In graphical applications like [DB Browser][] and [SQLiteStudio][] the extension can be automatically loaded when the application is started. This can be configured in the application settings.

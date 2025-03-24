@@ -330,7 +330,7 @@ def main():
     # Load data base and sqlite_protobuf extension
     db = sqlite3.connect("test.db")
     db.enable_load_extension(True)
-    db.load_extension("sqlite_protobuf")
+    db.load_extension("./sqlite_protobuf")
 
     # Test protobuf_to_json
     test_protobuf_to_json(db)
@@ -339,11 +339,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import os
-    cwd = os.getcwd()
-    print(cwd)
-    files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    for f in files:
-        print(f)
     main()
-    exit(1)

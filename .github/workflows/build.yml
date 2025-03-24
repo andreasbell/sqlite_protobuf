@@ -21,7 +21,6 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . --config=release
-        chmod +x sqlite_protobuf.so
       env:
         CC: gcc-7
         CXX: g++-7
@@ -47,7 +46,6 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32"
         cmake --build . --config=release
-        chmod +x sqlite_protobuf.so
       env:
         CC: gcc-7
         CXX: g++-7
@@ -69,7 +67,6 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . --config=release
-        chmod +x sqlite_protobuf.so
       env:
         CC: gcc-9
         CXX: g++-9
