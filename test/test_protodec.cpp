@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 #include "protodec.h"
 
 #define ASSERT(condition) { if (!(condition)) {std::cout << " Function: " << __FUNCTION__ << " failed on line: " << __LINE__ << std::endl; return 1;}}
@@ -84,7 +85,7 @@ int test_varint1(void)
     int64_t in = 0;
     int64_t out = 0;
 
-    for (size_t i = 0; i < 64; i++)
+    for (int i = 0; i < 64; i++)
     {
         // Test all possible bit lengths
         in = in << 1 | 1;
@@ -113,7 +114,7 @@ int test_varint2(void)
     int64_t in = 0;
     int64_t out = 0;
 
-    for (size_t i = 0; i <= 512; i++)
+    for (int i = 0; i <= 512; i++)
     {
         // Test sequence that spans positive, negative, zero, and varint size change
         in = i - 256;
@@ -143,7 +144,7 @@ int test_i64(void)
 
     double values[] = {0.0, -123.456, 3.14159265, 1e100, -1e100};
 
-    for (size_t i = 0; i < sizeof(values)/sizeof(double); i++)
+    for (int i = 0; i < sizeof(values)/sizeof(double); i++)
     {
         data.append(utils::encodeDouble(i+1, values[i]));
 
@@ -169,7 +170,7 @@ int test_len(void)
     std::string str;
     Buffer buffer;
 
-    for (size_t i = 0; i < 255; i++)
+    for (int i = 0; i < 255; i++)
     {
         //data.clear();
         str.push_back((char)i);
@@ -198,7 +199,7 @@ int test_i32(void)
 
     float values[] = {0.0, -123.456, 3.14159265, 1e10, -1e10};
 
-    for (size_t i = 0; i < sizeof(values)/sizeof(float); i++)
+    for (int i = 0; i < sizeof(values)/sizeof(float); i++)
     {
         data.append(utils::encodeFloat(i+1, values[i]));
 
@@ -266,7 +267,7 @@ int test_repeated_varint(void)
     Field *f;
 
     // Create protobuf with repeted varints
-    for (size_t i = 0; i < 64; i++)
+    for (int i = 0; i < 64; i++)
     {
         data.append(utils::encodeInt(1, 1LL << i));
     }
@@ -276,7 +277,7 @@ int test_repeated_varint(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (size_t i = 0; i < 64; i++)
+    for (int i = 0; i < 64; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_VARINT, i);
@@ -312,7 +313,7 @@ int test_packed_varint(void)
     Field *f;
 
     // Create protobuf with packed varints
-    for (size_t i = 0; i < 64; i++)
+    for (int i = 0; i < 64; i++)
     {
         utils::appendVarint(1LL << i, data);
     }
@@ -326,7 +327,7 @@ int test_packed_varint(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (size_t i = 0; i < 64; i++)
+    for (int i = 0; i < 64; i++)
     {
         // Positve index
         ASSERT(getInt64(&f->value, &out, i) != 0);
@@ -354,7 +355,7 @@ int test_repeated_i32(void)
     Field *f;
 
     // Create protobuf with repeted i32
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         data.append(utils::encodeFloat(1, i));
     }
@@ -364,7 +365,7 @@ int test_repeated_i32(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_I32, i);
@@ -400,7 +401,7 @@ int test_packed_i32(void)
     Field *f;
 
     // Create protobuf with packed i32
-    for (size_t i = 0; i < 100; i++)
+    for (uint32_t i = 0; i < 100; i++)
     {
         utils::appendI32(i, data);
     }
@@ -414,7 +415,7 @@ int test_packed_i32(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         // Positve index
         ASSERT(getFixed32(&f->value, &out, i) != 0);
@@ -442,7 +443,7 @@ int test_repeated_i64(void)
     Field *f;
 
     // Create protobuf with repeted i64
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         data.append(utils::encodeDouble(1, i));
     }
@@ -452,7 +453,7 @@ int test_repeated_i64(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_I64, i);
@@ -488,7 +489,7 @@ int test_packed_i64(void)
     Field *f;
 
     // Create protobuf with packed i64
-    for (size_t i = 0; i < 100; i++)
+    for (uint64_t i = 0; i < 100; i++)
     {
         utils::appendI64(i, data);
     }
@@ -502,7 +503,7 @@ int test_packed_i64(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         // Positve index
         ASSERT(getFixed64(&f->value, &out, i) != 0);
@@ -532,7 +533,7 @@ int test_repeated_len(void)
     std::string str = "Hello World!";
 
     // Create protobuf with repeted string
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         data.append(utils::encodeStr(1, str));
     }
@@ -542,7 +543,7 @@ int test_repeated_len(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (size_t i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_LEN, i);
@@ -853,7 +854,7 @@ int main(int argc, char *argv[])
 
     if (argc == 1) // Run all tests
     {
-        for (size_t i = 0; i < numTests; i++)
+        for (int i = 0; i < numTests; i++)
         {
             error |= tests[i]();
         }
@@ -861,7 +862,7 @@ int main(int argc, char *argv[])
 
     else if (argc > 1) // Run subset of tests
     {
-        for (size_t i = 1; i < argc; i++)
+        for (int i = 1; i < argc; i++)
         {
             int j = atoi(argv[i]);
             if (j >= 0 && j < numTests)
