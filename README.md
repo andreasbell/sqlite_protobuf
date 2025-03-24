@@ -36,7 +36,7 @@ In [python][] you can load the extension with:
 import sqlite3
 db = sqlite3.connect('my_database.db')
 db.enable_load_extension(True)
-db.load_extension('sqlite_protobuf')
+db.load_extension('./sqlite_protobuf')
 ```
 
 In graphical applications like [DB Browser][] and [SQLiteStudio][] the extension can be automatically loaded when the application is started. This can be configured in the application settings.
@@ -55,8 +55,12 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config=release
 ```
-
 building the source code will generate a library `sqlite_protobuf.dll`, `sqlite_protobuf.so` or `sqlite_protobuf.dylib` depending on your operating system.
+
+After building, the unit tests can be run with:
+```bash
+ctest -C Release --output-on-failure
+```
 
 ## API
 

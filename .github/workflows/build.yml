@@ -24,6 +24,10 @@ jobs:
       env:
         CC: gcc-7
         CXX: g++-7
+    - name: Test
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
     - uses: actions/upload-artifact@v4
       with:
         name: linux-x64
@@ -51,21 +55,25 @@ jobs:
         path: build/*.so
 
   build-linux-aarch64:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04-arm
     steps:
     - uses: actions/checkout@v4
     - name: Install compilers
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-9-aarch64-linux-gnu g++-9-aarch64-linux-gnu cmake build-essential
+        sudo apt-get install gcc-9 g++-9
     - name: Build release
       run: |
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . --config=release
       env:
-        CC: /usr/bin/aarch64-linux-gnu-gcc-9
-        CXX: /usr/bin/aarch64-linux-gnu-g++-9
+        CC: gcc-9
+        CXX: g++-9
+    - name: Test
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
     - uses: actions/upload-artifact@v4
       with:
         name: linux-aarch64
@@ -80,10 +88,14 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . --config=release
+    - name: Test
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
     - uses: actions/upload-artifact@v4
       with:
         name: windows-x64
-        path: build/release/*.dll
+        path: build/*.dll
 
   build-windows-x86:
     runs-on: windows-latest
@@ -97,7 +109,7 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: windows-x86
-        path: build/release/*.dll
+        path: build/*.dll
 
   build-windows-aarch64:
     runs-on: windows-latest
@@ -111,10 +123,10 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: windows-aarch64
-        path: build/release/*.dll
+        path: build/*.dll
 
   build-macos-x64:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
     - uses: actions/checkout@v4
     - name: Build release
@@ -122,6 +134,10 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
         cmake --build . --config=release
+    - name: Test
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
     - uses: actions/upload-artifact@v4
       with:
         name: macos-x64
@@ -136,6 +152,10 @@ jobs:
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
         cmake --build . --config=release
+    - name: Test
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
     - uses: actions/upload-artifact@v4
       with:
         name: macos-aarch64
