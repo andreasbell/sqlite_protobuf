@@ -339,4 +339,11 @@ def main():
 
 
 if __name__ == "__main__":
+    import os
+    cwd = os.getcwd()
+    print(cwd)
+    files = [f for f in os.listdir('.') if os.path.isfile(f)]
+    for f in files:
+        print(f)
     main()
+    exit(1)
