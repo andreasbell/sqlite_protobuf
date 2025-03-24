@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include "..\src\protodec.h"
+#include "protodec.h"
 
 #define ASSERT(condition) { if (!(condition)) {std::cout << " Function: " << __FUNCTION__ << " failed on line: " << __LINE__ << std::endl; return 1;}}
 
