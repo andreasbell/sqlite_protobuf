@@ -21,13 +21,23 @@ namespace utils
     template<typename T>
     void appendI64(T n, std::string& buf)
     {
-        buf.append((char*)&n, sizeof(uint64_t));
+        uint64_t* tmp = (uint64_t*)&n; 
+        for (int i = 0; i < sizeof(uint64_t); i++)
+        {
+            char c = (char)(*tmp >> 8*i);
+            buf.append(&c, sizeof(char));
+        }
     }
 
     template<typename T>
     void appendI32(T n, std::string& buf)
     {
-        buf.append((char*)&n, sizeof(uint32_t));
+        uint32_t* tmp = (uint32_t*)&n; 
+        for (int i = 0; i < sizeof(uint32_t); i++)
+        {
+            char c = (char)(*tmp >> 8*i);
+            buf.append(&c, sizeof(char));
+        }
     }
 
     void appendStr(const std::string& str, std::string& buf)

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <map>
-#include <ctype.h>
+#include <cstdint>
 #include <vector>
 #include <iostream>
 

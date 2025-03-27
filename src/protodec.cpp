@@ -573,14 +573,22 @@ static inline int getI64(const Buffer *in, void *out, int64_t index)
 {
     size_t length = in->end - in->start;
     
-    index = index < 0 ? index*sizeof(int64_t) + length : index*sizeof(int64_t); // Wrap arround
+    index = index < 0 ? index*sizeof(uint64_t) + length : index*sizeof(uint64_t); // Wrap arround
     
-    if (index < 0 || index >= length || length % sizeof(int64_t) != 0)
+    if (index < 0 || index >= length || length % sizeof(uint64_t) != 0)
     {
         return DECODE_ERROR;
     }
 
-    memcpy(out, in->start + index, sizeof(int64_t));
+    uint64_t *result =(uint64_t*) out;
+    *result = (*result << 8) | in->start[index + 7];
+    *result = (*result << 8) | in->start[index + 6];
+    *result = (*result << 8) | in->start[index + 5];
+    *result = (*result << 8) | in->start[index + 4];
+    *result = (*result << 8) | in->start[index + 3];
+    *result = (*result << 8) | in->start[index + 2];
+    *result = (*result << 8) | in->start[index + 1];
+    *result = (*result << 8) | in->start[index + 0];
     return DECODE_OK;
 }
 
@@ -603,14 +611,18 @@ static inline int getI32(const Buffer *in, void *out, int64_t index)
 {
     size_t length = in->end - in->start;
     
-    index = index < 0 ? index*sizeof(int32_t) + length : index*sizeof(int32_t); // Wrap arround
+    index = index < 0 ? index*sizeof(uint32_t) + length : index*sizeof(uint32_t); // Wrap arround
     
-    if (index < 0 || index >= length || length % sizeof(int32_t) != 0)
+    if (index < 0 || index >= length || length % sizeof(uint32_t) != 0)
     {
         return DECODE_ERROR;
     }
 
-    memcpy(out, in->start + index, sizeof(int32_t));
+    uint32_t *result =(uint32_t*) out;
+    *result = (*result << 8) | in->start[index + 3];
+    *result = (*result << 8) | in->start[index + 2];
+    *result = (*result << 8) | in->start[index + 1];
+    *result = (*result << 8) | in->start[index + 0];
     return DECODE_OK;
 }
 
