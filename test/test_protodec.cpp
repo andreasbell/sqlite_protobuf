@@ -1,12 +1,10 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <stdint.h>
 #include "protodec.h"
 
 #define ASSERT(condition) { if (!(condition)) {std::cout << " Function: " << __FUNCTION__ << " failed on line: " << __LINE__ << std::endl; return 1;}}
-
-#define UINT64_MAX 18446744073709551615
-#define UINT32_MAX 4294967295
 
 namespace utils
 {
