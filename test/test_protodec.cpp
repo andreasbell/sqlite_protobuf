@@ -5,6 +5,9 @@
 
 #define ASSERT(condition) { if (!(condition)) {std::cout << " Function: " << __FUNCTION__ << " failed on line: " << __LINE__ << std::endl; return 1;}}
 
+#define UINT64_MAX 18446744073709551615
+#define UINT32_MAX 4294967295
+
 namespace utils
 {
     void appendVarint(uint64_t n, std::string& buf) 
@@ -152,7 +155,7 @@ int test_i64(void)
     Buffer buffer;
     double out = 0;
 
-    double values[] = {0.0, -123.456, 3.14159265, 1e100, -1e100};
+    double values[] = {0.0, -0.0, -123.456, 3.14159265, 1e100, -1e100};
 
     for (int i = 0; i < sizeof(values)/sizeof(double); i++)
     {
@@ -207,7 +210,7 @@ int test_i32(void)
     Buffer buffer;
     float out = 0;
 
-    float values[] = {0.0, -123.456, 3.14159265, 1e10, -1e10};
+    float values[] = {0.0, -0.0, -123.456, 3.14159265, 1e10, -1e10};
 
     for (int i = 0; i < sizeof(values)/sizeof(float); i++)
     {
@@ -271,15 +274,18 @@ int test_subfield(void)
 
 int test_repeated_varint(void)
 {
+    int length = 10000;
+
     std::string data;
     Buffer buffer;
-    int64_t out;
+    uint64_t in, out;
     Field *f;
 
     // Create protobuf with repeted varints
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < length; i++)
     {
-        data.append(utils::encodeInt(1, 1LL << i));
+        in = (UINT64_MAX / length) * i;
+        data.append(utils::encodeInt(1, in));
     }
 
     buffer.start = (const uint8_t*)data.c_str();
@@ -287,29 +293,31 @@ int test_repeated_varint(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_VARINT, i);
+        in = (UINT64_MAX / length) * i;
 
         ASSERT(f != nullptr);
-        ASSERT(getInt64(&f->value, &out, 0) != 0);
-        ASSERT(out == 1LL << i);
+        ASSERT(getUint64(&f->value, &out, 0) != 0);
+        ASSERT(out == in);
 
         // Negative index
         f = field.getSubField(1, WIRETYPE_VARINT,  -(i + 1));
+        in = (UINT64_MAX / length) * (length - 1 - i);
 
         ASSERT(f != nullptr);
-        ASSERT(getInt64(&f->value, &out, 0) != 0);
-        ASSERT(out == 1LL << (63 - i));
+        ASSERT(getUint64(&f->value, &out, 0) != 0);
+        ASSERT(out == in);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_VARINT, 64);
+    f = field.getSubField(1, WIRETYPE_VARINT, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_VARINT, -65);
+    f = field.getSubField(1, WIRETYPE_VARINT, -(length + 1));
     ASSERT(f == nullptr);
 
     return 0;
@@ -317,15 +325,18 @@ int test_repeated_varint(void)
 
 int test_packed_varint(void)
 {
+    int length = 10000;
+
     std::string data;
     Buffer buffer;
-    int64_t out;
+    uint64_t in, out;
     Field *f;
 
     // Create protobuf with packed varints
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < length; i++)
     {
-        utils::appendVarint(1LL << i, data);
+        in = (UINT64_MAX / length) * i;
+        utils::appendVarint(in, data);
     }
     data = utils::encodeStr(1, data);
 
@@ -337,35 +348,39 @@ int test_packed_varint(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
-        ASSERT(getInt64(&f->value, &out, i) != 0);
-        ASSERT(out == 1LL << i);
+        in = (UINT64_MAX / length) * i;
+        ASSERT(getUint64(&f->value, &out, i) != 0);
+        ASSERT(out == in);
 
         // Negative index
-        ASSERT(getInt64(&f->value, &out, -(i + 1)) != 0);
-        ASSERT(out == 1LL << (63 - i));
+        in = (UINT64_MAX / length) * (length - 1 - i);
+        ASSERT(getUint64(&f->value, &out, -(i + 1)) != 0);
+        ASSERT(out == in);
     }
 
     // Positive index out of bounds
-    ASSERT(getInt64(&f->value, &out, 64) == 0);
+    ASSERT(getUint64(&f->value, &out, length) == 0);
 
     // Negative index out of bounds
-    ASSERT(getInt64(&f->value, &out, -65) == 0);
+    ASSERT(getUint64(&f->value, &out, -(length + 1)) == 0);
 
     return 0;
 }
 
 int test_repeated_i32(void)
 {
+    int length = 10000;
+    
     std::string data;
     Buffer buffer;
     float out;
     Field *f;
 
     // Create protobuf with repeted i32
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         data.append(utils::encodeFloat(1, i));
     }
@@ -375,7 +390,7 @@ int test_repeated_i32(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_I32, i);
@@ -389,15 +404,15 @@ int test_repeated_i32(void)
 
         ASSERT(f != nullptr);
         ASSERT(getFloat(&f->value, &out, 0) != 0);
-        ASSERT(out == 99 - i);
+        ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_I32, 100);
+    f = field.getSubField(1, WIRETYPE_I32, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_I32, -101);
+    f = field.getSubField(1, WIRETYPE_I32, -(length + 1));
     ASSERT(f == nullptr);
 
     return 0;
@@ -405,13 +420,15 @@ int test_repeated_i32(void)
 
 int test_packed_i32(void)
 {
+    int length = 10000;
+
     std::string data;
     Buffer buffer;
     uint32_t out;
     Field *f;
 
     // Create protobuf with packed i32
-    for (uint32_t i = 0; i < 100; i++)
+    for (uint32_t i = 0; i < length; i++)
     {
         utils::appendI32(i, data);
     }
@@ -425,7 +442,7 @@ int test_packed_i32(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         ASSERT(getFixed32(&f->value, &out, i) != 0);
@@ -433,27 +450,29 @@ int test_packed_i32(void)
 
         // Negative index
         ASSERT(getFixed32(&f->value, &out, -(i + 1)) != 0);
-        ASSERT(out == 99 - i);
+        ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    ASSERT(getFixed32(&f->value, &out, 100) == 0);
+    ASSERT(getFixed32(&f->value, &out, length) == 0);
 
     // Negative index out of bounds
-    ASSERT(getFixed32(&f->value, &out, -101) == 0);
+    ASSERT(getFixed32(&f->value, &out, -(length + 1)) == 0);
 
     return 0;
 }
 
 int test_repeated_i64(void)
 {
+    int length = 10000;
+
     std::string data;
     Buffer buffer;
     double out;
     Field *f;
 
     // Create protobuf with repeted i64
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         data.append(utils::encodeDouble(1, i));
     }
@@ -463,7 +482,7 @@ int test_repeated_i64(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_I64, i);
@@ -477,15 +496,15 @@ int test_repeated_i64(void)
 
         ASSERT(f != nullptr);
         ASSERT(getDouble(&f->value, &out, 0) != 0);
-        ASSERT(out == 99 - i);
+        ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_I64, 100);
+    f = field.getSubField(1, WIRETYPE_I64, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_I64, -101);
+    f = field.getSubField(1, WIRETYPE_I64, -(length + 1));
     ASSERT(f == nullptr);
 
     return 0;
@@ -493,13 +512,15 @@ int test_repeated_i64(void)
 
 int test_packed_i64(void)
 {
+    int length = 10000;
+
     std::string data;
     Buffer buffer;
     uint64_t out;
     Field *f;
 
     // Create protobuf with packed i64
-    for (uint64_t i = 0; i < 100; i++)
+    for (uint64_t i = 0; i < length; i++)
     {
         utils::appendI64(i, data);
     }
@@ -513,7 +534,7 @@ int test_packed_i64(void)
     f = field.getSubField(1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         ASSERT(getFixed64(&f->value, &out, i) != 0);
@@ -521,30 +542,33 @@ int test_packed_i64(void)
 
         // Negative index
         ASSERT(getFixed64(&f->value, &out, -(i + 1)) != 0);
-        ASSERT(out == 99 - i);
+        ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    ASSERT(getFixed64(&f->value, &out, 100) == 0);
+    ASSERT(getFixed64(&f->value, &out, length) == 0);
 
     // Negative index out of bounds
-    ASSERT(getFixed64(&f->value, &out, -101) == 0);
+    ASSERT(getFixed64(&f->value, &out, -(length + 1)) == 0);
 
     return 0;
 }
 
 int test_repeated_len(void)
 {
+    int length = 10000;
+    
     std::string data;
     Buffer buffer;
     double out;
     Field *f;
 
-    std::string str = "Hello World!";
+    std::string str = "";
 
     // Create protobuf with repeted string
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
+        str = std::to_string(i);
         data.append(utils::encodeStr(1, str));
     }
 
@@ -553,25 +577,27 @@ int test_repeated_len(void)
     Field field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < length; i++)
     {
         // Positve index
         f = field.getSubField(1, WIRETYPE_LEN, i);
         ASSERT(f != nullptr);
+        str = std::to_string(i);
         ASSERT(memcmp(f->value.start, str.c_str(), str.length()) == 0);
 
         // Negative index
         f = field.getSubField(1, WIRETYPE_LEN,  -(i + 1));
         ASSERT(f != nullptr);
+        str = std::to_string(length - 1 - i);
         ASSERT(memcmp(f->value.start, str.c_str(), str.length()) == 0);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_LEN, 100);
+    f = field.getSubField(1, WIRETYPE_LEN, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_LEN, -101);
+    f = field.getSubField(1, WIRETYPE_LEN, -(length + 1));
     ASSERT(f == nullptr);
 
     return 0;
@@ -618,7 +644,7 @@ int test_type_int64(void)
 int test_type_uint32(void)
 {
     uint8_t data[] = {0x18, 0xff, 0xff, 0xff, 0xff, 0x0f};
-    uint32_t expected = 4294967295;
+    uint32_t expected = UINT32_MAX;
     uint32_t result = 0;
 
     Buffer buffer;
@@ -637,7 +663,7 @@ int test_type_uint32(void)
 int test_type_uint64(void)
 {
     uint8_t data[] = {0x20, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01};
-    uint64_t expected = 18446744073709551615;
+    uint64_t expected = UINT64_MAX;
     uint64_t result = 0;
 
     Buffer buffer;
@@ -713,7 +739,7 @@ int test_type_bool(void)
 int test_type_fixed64(void)
 {
     uint8_t data[] = {0x41, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    uint64_t expected = 18446744073709551615;
+    uint64_t expected = UINT64_MAX;
     uint64_t result = 0;
 
     Buffer buffer;
@@ -770,7 +796,7 @@ int test_type_double(void)
 int test_type_fixed32(void)
 {
     uint8_t data[] = {0x5d, 0xff, 0xff, 0xff, 0xff};
-    uint32_t expected = 4294967295;
+    uint32_t expected = UINT32_MAX;
     uint32_t result = 0;
 
     Buffer buffer;
