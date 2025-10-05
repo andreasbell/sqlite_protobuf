@@ -129,7 +129,7 @@ def test_protobuf_to_json(db):
     output = res.fetchone()[0]
     assert output == expected
 
-def test_protobuf_to_extract(db):
+def test_protobuf_extract(db):
     cur = db.cursor()
     input = b""
 
@@ -200,10 +200,14 @@ def test_protobuf_to_extract(db):
     res = cur.execute("SELECT protobuf_extract(?, '$.13', 'sfixed64');", [input])
     assert res.fetchone()[0] == -1
 
-    # Extract enum
+    # Extract enum as value
     input += encode_int(14, 123)
     res = cur.execute("SELECT protobuf_extract(?, '$.14', 'enum');", [input])
     assert res.fetchone()[0] == 123
+
+    # Extract enum as key
+    res = cur.execute("SELECT protobuf_extract(?, '$.14', 'enum MY_ENUM {Alice=0; Bob=123; Charlie=1000;}');", [input])
+    assert res.fetchone()[0] == "Bob"
 
     # Extract repeated
     for i in range(100):
@@ -268,7 +272,6 @@ def test_protobuf_to_extract(db):
     res = cur.execute("SELECT protobuf_extract(?, '$.20', 'double');", [input])
     assert res.fetchone()[0] == float("inf")
     
-
     # Extract from group
     input += encode_group(21, encode_str(1, b"I am in a group"))
     res = cur.execute("SELECT protobuf_extract(?, '$.21.1', 'string');", [input])
@@ -285,6 +288,40 @@ def test_protobuf_to_extract(db):
     res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [res.fetchone()[0]])
     assert res.fetchone()[0] == b"I am a nested message"
 
+    # Extract nested repeated
+    input += encode_str(24, encode_str(1, b"a") + encode_str(1, b"b"))
+    input += encode_str(24, encode_str(1, b"c") + encode_str(1, b"d"))
+    res = cur.execute("SELECT protobuf_extract(?, '$.24.1', 'string');", [input])
+    assert res.fetchone()[0] == "a"
+    res = cur.execute("SELECT protobuf_extract(?, '$.24.1[1]', 'string');", [input])
+    assert res.fetchone()[0] == "b"
+    res = cur.execute("SELECT protobuf_extract(?, '$.24[1].1', 'string');", [input])
+    assert res.fetchone()[0] == "c"
+    res = cur.execute("SELECT protobuf_extract(?, '$.24[1].1[1]', 'string');", [input])
+    assert res.fetchone()[0] == "d"
+
+    # Extract none existant path
+    res = cur.execute("SELECT protobuf_extract(?, '$.100', '');", [input])
+    assert res.fetchone()[0] is None
+    res = cur.execute("SELECT protobuf_extract(?, '$.-1', '');", [input])
+    assert res.fetchone()[0] is None
+    res = cur.execute("SELECT protobuf_extract(?, '$.1.2.3', '');", [input])
+    assert res.fetchone()[0] is None
+
+    # Extract invalid / malformed path
+    try:
+        res = cur.execute("SELECT protobuf_extract(?, '', 'string');", [input])
+        assert False # Should not reach this
+    except sqlite3.OperationalError as e:
+        assert str(e) == "Path not valid, path should start with $"
+
+    try:
+        res = cur.execute("SELECT protobuf_extract(?, 'abcd', 'string');", [input])
+        assert False # Should not reach this
+    except sqlite3.OperationalError as e:
+        assert str(e) == "Path not valid, path should start with $"
+
+
 def test_protobuf_each(db):
     cur = db.cursor()
 
@@ -299,6 +336,10 @@ def test_protobuf_each(db):
     input += encode_i32(3, 3)
     input += encode_i64(4, 4)
     input += encode_i64(4, 5)
+
+    # Extract all
+    res = cur.execute("SELECT * FROM protobuf_each(?)", [input])
+    assert len(res.fetchall()) == 20
 
     # Extract all strings
     res = cur.execute("SELECT * FROM protobuf_each(?, '$') WHERE wiretype = 2 and field = 1", [input])
@@ -325,6 +366,39 @@ def test_protobuf_each(db):
     assert res.fetchone()[1:4] == (4, 1, b"\x05\x00\x00\x00\x00\x00\x00\x00")
     assert res.fetchone() is None
 
+    # Extract all fields from submessage
+    input += encode_str(5, encode_str(1, b"I") + encode_str(1, b"am") + encode_str(1, b"a") + encode_str(1, b"sub message"))
+    res = cur.execute("SELECT * FROM protobuf_each(?, '$.5') WHERE wiretype = 2", [input])
+    assert res.fetchone()[1:4] == (1, 2, b"I")
+    assert res.fetchone()[1:4] == (1, 2, b"am")
+    assert res.fetchone()[1:4] == (1, 2, b"a")
+    assert res.fetchone()[1:4] == (1, 2, b"sub message")
+    assert res.fetchone() is None
+
+    # Extract all fields from group
+    input += encode_group(6, encode_str(1, b"I") + encode_str(1, b"am") + encode_str(1, b"a") + encode_str(1, b"group"))
+    res = cur.execute("SELECT * FROM protobuf_each(?, '$.6') WHERE wiretype = 2", [input])
+    assert res.fetchone()[1:4] == (1, 2, b"I")
+    assert res.fetchone()[1:4] == (1, 2, b"am")
+    assert res.fetchone()[1:4] == (1, 2, b"a")
+    assert res.fetchone()[1:4] == (1, 2, b"group")
+    assert res.fetchone() is None
+
+    # Extract none existant path
+    res = cur.execute("SELECT * FROM protobuf_each(?, '$.100')", [input])
+    assert res.fetchone() is None
+    res = cur.execute("SELECT * FROM protobuf_each(?, '$.-1')", [input])
+    assert res.fetchone() is None
+    res = cur.execute("SELECT * FROM protobuf_each(?, '$.1.2.3')", [input])
+    assert res.fetchone() is None
+
+    # Extract invalid / malformed path
+    try:
+        res = cur.execute("SELECT * FROM protobuf_each(?, 'abcd')", [input])
+        assert False # Should not reach this
+    except sqlite3.OperationalError as e:
+        assert str(e) == "Path not valid, path should start with $"
+
 
 def main():
     # Load data base and sqlite_protobuf extension
@@ -334,7 +408,7 @@ def main():
 
     # Test protobuf_to_json
     test_protobuf_to_json(db)
-    test_protobuf_to_extract(db)
+    test_protobuf_extract(db)
     test_protobuf_each(db)
 
 
