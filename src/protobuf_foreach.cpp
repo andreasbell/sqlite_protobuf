@@ -199,48 +199,42 @@ namespace sqlite_protobuf
         if(idxNum==3)
         {
             // Get path from argument
-            const std::string path = string_from_sqlite3_value(argv[1]);
-            
-            if (path.length() == 0) 
+            const char *pathText = (const char *)sqlite3_value_text(argv[1]); // NULL terminated cstring
+            int pathLength = (int)sqlite3_value_bytes(argv[1]);
+
+            if (pathLength == 0) 
             {
                 return SQLITE_OK;
             }
             
-            if (path[0] != '$')
+            // Check that the path begins with $, representing the root of the tree
+            if (pathText[0] != '$')
             {
                 sqlite3_free(cur->pVtab->zErrMsg);
-                cur->pVtab->zErrMsg = sqlite3_mprintf("Invalid path");
+                cur->pVtab->zErrMsg = sqlite3_mprintf("Path not valid, path should start with $");
                 return SQLITE_ERROR;
             }
 
-            pCur->path = path;
+            pCur->path = string_from_sqlite3_value(argv[1]);
 
             // Parse the path string and traverse the message
             int fieldNumber, fieldIndex;
-            size_t fieldStart = path.find(".", 0);
+            const char *fieldStart = (const char *)strchr(pathText, '.');
             Field* parent = nullptr;
-            while(fieldStart < path.size())
+            while(fieldStart)
             {
-                size_t fieldEnd = path.find(".", fieldStart + 1);
-                size_t indexStart = path.find("[", fieldStart + 1);
-                size_t indexEnd = path.find("]", fieldStart + 1);
+                const char *fieldEnd   = (const char *)strchr(fieldStart + 1, '.');
+                const char *indexStart = (const char *)strchr(fieldStart + 1, '[');
+                const char *indexEnd   = (const char *)strchr(fieldStart + 1, ']');
 
-                fieldEnd = fieldEnd == std::string::npos ? path.size() : fieldEnd;
-
-                if (indexStart < fieldEnd && indexEnd < fieldEnd) // Both field and index supplied
-                {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, indexStart - fieldStart - 1).c_str());
-                    fieldIndex  = std::atoi(path.substr(indexStart + 1, indexEnd - indexStart - 1).c_str());
-                }
-                else // Only field supplied
-                {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, fieldEnd - fieldStart - 1).c_str());
-                    fieldIndex  = 0; 
-                }
+                // Extract field and index
+                fieldNumber = atoi(fieldStart + 1);
+                fieldIndex  = (indexStart && indexEnd && (indexStart < fieldEnd || fieldEnd == nullptr)) ? atoi(indexStart + 1) : 0;
 
                 // Move path ponter forward
                 fieldStart = fieldEnd;
 
+                // Try extracting field as submessage or group
                 parent = pCur->root;
                 pCur->root = nullptr;
                 if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);}
