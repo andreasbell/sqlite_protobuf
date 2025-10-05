@@ -88,7 +88,7 @@ namespace sqlite_protobuf
         pCur = (ProtobufForeachCursor *)sqlite3_malloc( sizeof(*pCur) );
         if( pCur==0 ) return SQLITE_NOMEM;
         memset(pCur, 0, sizeof(*pCur));
-        *ppCursor = &pCur->base;
+        *ppCursor = (sqlite3_vtab_cursor *)pCur;
         pCur->path = "$";
         return SQLITE_OK;
     }
@@ -99,6 +99,8 @@ namespace sqlite_protobuf
     static int protobufForeachClose(sqlite3_vtab_cursor *cur)
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor*)cur;
+        pCur->field.subFields.~vector();
+        pCur->path.~basic_string();
         sqlite3_free(pCur);
         return SQLITE_OK;
     }
