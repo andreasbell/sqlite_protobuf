@@ -321,7 +321,6 @@ def test_protobuf_extract(db):
     except sqlite3.OperationalError as e:
         assert str(e) == "Path not valid, path should start with $"
 
-
 def test_protobuf_each(db):
     cur = db.cursor()
 
@@ -399,6 +398,32 @@ def test_protobuf_each(db):
     except sqlite3.OperationalError as e:
         assert str(e) == "Path not valid, path should start with $"
 
+def test_malformed_input(db):
+    cur = db.cursor()
+
+    # Try extracting from empty buffer
+    res = cur.execute("SELECT protobuf_extract(?, '$', '');", [b""])
+    assert res.fetchone()[0] is None
+
+    # Try extracting from truncated buffer (str wiretype)
+    input = encode_str(1, b"Hello")[0:-1]
+    res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [input])
+    assert res.fetchone()[0] is None
+
+    # Try extracting from truncated buffer (i32 wiretype)
+    input = encode_i32(1, 1234)[0:-1]
+    res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [input])
+    assert res.fetchone()[0] is None
+
+    # Try extracting from truncated buffer (i64 wiretype)
+    input = encode_i64(1, 1234)[0:-1]
+    res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [input])
+    assert res.fetchone()[0] is None
+
+    # Try extracting from truncated buffer (varint wiretype)
+    input = encode_int(1, 1234)[0:-1]
+    res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [input])
+    assert res.fetchone()[0] is None
 
 def main():
     # Load data base and sqlite_protobuf extension
@@ -406,10 +431,11 @@ def main():
     db.enable_load_extension(True)
     db.load_extension("./sqlite_protobuf")
 
-    # Test protobuf_to_json
+    # Run tests
     test_protobuf_to_json(db)
     test_protobuf_extract(db)
     test_protobuf_each(db)
+    test_malformed_input(db)
 
 
 if __name__ == "__main__":
