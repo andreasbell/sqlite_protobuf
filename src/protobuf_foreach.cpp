@@ -1,7 +1,6 @@
 #include "protobuf_foreach.h"
 #include "sqlite3ext.h"
 
-#include <string>
 #include <cstring>
 
 #include "protodec.h"
@@ -9,13 +8,6 @@
 namespace sqlite_protobuf
 {
     SQLITE_EXTENSION_INIT3
-
-    std::string string_from_sqlite3_value(sqlite3_value *value)
-    {
-        const char *text = static_cast<const char *>(sqlite3_value_blob(value));
-        size_t text_size = static_cast<size_t>(sqlite3_value_bytes(value));
-        return std::string(text, text_size);
-    }
 
     /*
     ** Define virtual table data structure containg data needed for virtual table
@@ -34,7 +26,7 @@ namespace sqlite_protobuf
     {
         sqlite3_vtab_cursor base;   // Base class - must be first
         sqlite3_int64 iRowid;       // The rowid
-        std::string path;           // Path to root field
+        char* path;                 // Path to root field
         Field field;                // Decoded protobuf message
         Field *root;                // Root field
     };
@@ -89,7 +81,12 @@ namespace sqlite_protobuf
         if( pCur==0 ) return SQLITE_NOMEM;
         memset(pCur, 0, sizeof(*pCur));
         *ppCursor = (sqlite3_vtab_cursor *)pCur;
-        pCur->path = "$";
+        
+        // Initialize path to root
+        pCur->path = (char*)sqlite3_malloc64(2);
+        if ( pCur->path==0 ){return SQLITE_NOMEM;}
+        strcpy(pCur->path, "$\0");
+        
         return SQLITE_OK;
     }
 
@@ -100,7 +97,7 @@ namespace sqlite_protobuf
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor*)cur;
         pCur->field.subFields.~vector();
-        pCur->path.~basic_string();
+        sqlite3_free(pCur->path);
         sqlite3_free(pCur);
         return SQLITE_OK;
     }
@@ -145,7 +142,7 @@ namespace sqlite_protobuf
             sqlite3_result_blob(ctx, (char*)pCur->field.value.start, pCur->field.value.size(), SQLITE_STATIC);
             break;
         case PROTOBUF_FOREACH_ROOT:
-            sqlite3_result_text(ctx, pCur->path.c_str(), pCur->path.size(), SQLITE_TRANSIENT);
+            sqlite3_result_text(ctx, pCur->path, -1, SQLITE_STATIC);
             break;
         default:
             break;
@@ -185,7 +182,7 @@ namespace sqlite_protobuf
         pCur->iRowid = 0;
 
         // Query strategy 0, no buffer supplied
-        if(idxNum==0)
+        if(idxNum == 0)
         {
             return SQLITE_OK;
         }
@@ -198,16 +195,11 @@ namespace sqlite_protobuf
         pCur->root = &pCur->field;
         
         // Query strategy 3, path supplied perform search to find root
-        if(idxNum==3)
+        if(idxNum == 3)
         {
             // Get path from argument
             const char *pathText = (const char *)sqlite3_value_text(argv[1]); // NULL terminated cstring
             int pathLength = (int)sqlite3_value_bytes(argv[1]);
-
-            if (pathLength == 0) 
-            {
-                return SQLITE_OK;
-            }
             
             // Check that the path begins with $, representing the root of the tree
             if (pathText[0] != '$')
@@ -217,7 +209,10 @@ namespace sqlite_protobuf
                 return SQLITE_ERROR;
             }
 
-            pCur->path = string_from_sqlite3_value(argv[1]);
+            // Store path in cursor
+            pCur->path = (char*)sqlite3_realloc64(pCur->path, pathLength + 1);
+            if (pCur->path == nullptr){return SQLITE_NOMEM;}
+            strcpy(pCur->path, pathText);
 
             // Parse the path string and traverse the message
             int fieldNumber, fieldIndex;

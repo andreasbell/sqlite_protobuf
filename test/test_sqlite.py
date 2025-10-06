@@ -336,9 +336,29 @@ def test_protobuf_each(db):
     input += encode_i64(4, 4)
     input += encode_i64(4, 5)
 
-    # Extract all
-    res = cur.execute("SELECT * FROM protobuf_each(?)", [input])
-    assert len(res.fetchall()) == 20
+    # Extract all (without path)
+    res = cur.execute("SELECT tag, field, wiretype, value, parent, buffer, root FROM protobuf_each(?)", [input])
+    output = res.fetchall()
+    assert len(output) == 20
+    assert output[-1][0] == 33
+    assert output[-1][1] == 4
+    assert output[-1][2] == 1
+    assert output[-1][3] == b"\x05\x00\x00\x00\x00\x00\x00\x00"
+    assert output[-1][4] == input
+    assert output[-1][5] == input
+    assert output[-1][6] == "$"
+
+    # Extract all (with path)
+    res = cur.execute("SELECT tag, field, wiretype, value, parent, buffer, root FROM protobuf_each(?, '$')", [input])
+    output = res.fetchall()
+    assert len(output) == 20
+    assert output[-1][0] == 33
+    assert output[-1][1] == 4
+    assert output[-1][2] == 1
+    assert output[-1][3] == b"\x05\x00\x00\x00\x00\x00\x00\x00"
+    assert output[-1][4] == input
+    assert output[-1][5] == input
+    assert output[-1][6] == "$"
 
     # Extract all strings
     res = cur.execute("SELECT * FROM protobuf_each(?, '$') WHERE wiretype = 2 and field = 1", [input])
