@@ -67,6 +67,14 @@ def test_protobuf_to_json(db):
     output = res.fetchone()[0]
     assert output == expected
 
+    # None ascii string
+    input = encode_str(1, b"\x00\x01\x02\x03\x04\x05\06")
+    expected = '{"1":"AAECAwQFBg=="}'
+
+    res = cur.execute("SELECT protobuf_to_json(?);", [input])
+    output = res.fetchone()[0]
+    assert output == expected
+
     # Single int
     for i in range(0, 256):
         input = encode_int(i + 1, i - 50)
@@ -288,6 +296,10 @@ def test_protobuf_extract(db):
     res = cur.execute("SELECT protobuf_extract(?, '$.1', '');", [res.fetchone()[0]])
     assert res.fetchone()[0] == b"I am a nested message"
 
+    # Extract raw buffer of root message
+    res = cur.execute("SELECT protobuf_extract(?, '$', '');", [input])
+    assert res.fetchone()[0] == input
+
     # Extract nested repeated
     input += encode_str(24, encode_str(1, b"a") + encode_str(1, b"b"))
     input += encode_str(24, encode_str(1, b"c") + encode_str(1, b"d"))
@@ -308,18 +320,26 @@ def test_protobuf_extract(db):
     res = cur.execute("SELECT protobuf_extract(?, '$.1.2.3', '');", [input])
     assert res.fetchone()[0] is None
 
-    # Extract invalid / malformed path
+    # Extract invalid empty path
     try:
         res = cur.execute("SELECT protobuf_extract(?, '', 'string');", [input])
         assert False # Should not reach this
     except sqlite3.OperationalError as e:
         assert str(e) == "Path not valid, path should start with $"
 
+    # Extract invalid malformed path
     try:
         res = cur.execute("SELECT protobuf_extract(?, 'abcd', 'string');", [input])
         assert False # Should not reach this
     except sqlite3.OperationalError as e:
         assert str(e) == "Path not valid, path should start with $"
+
+    # Extract invalid / unsupported type
+    try:
+        res = cur.execute("SELECT protobuf_extract(?, '$.1', 'abcd');", [input])
+        assert False # Should not reach this
+    except sqlite3.OperationalError as e:
+        assert str(e) == "Type not valid, try type '' or check documentation"
 
 def test_protobuf_each(db):
     cur = db.cursor()
@@ -447,7 +467,7 @@ def test_malformed_input(db):
 
 def main():
     # Load data base and sqlite_protobuf extension
-    db = sqlite3.connect("test.db")
+    db = sqlite3.connect(":memory:")
     db.enable_load_extension(True)
     db.load_extension("./sqlite_protobuf")
 
