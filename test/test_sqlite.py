@@ -126,16 +126,49 @@ def test_protobuf_to_json(db):
 
     # Compound message
     input = b""
+    input += encode_int(536870911, 536870911)
     input += encode_str(1, b"A")
     input += encode_group(2, encode_int(1, -1))
     input += encode_str(3, encode_i64(1, 1.23))
     input += encode_i32(4, float("nan"))
     input += encode_i32(4, float("inf"))
-    expected = '{"1":"A","2":{"1":-1},"3":{"1":1.23},"4":[nan,inf]}'
+
+    expected = '{"1":"A","2":{"1":-1},"3":{"1":1.23},"4":[nan,inf],"536870911":536870911}'
 
     res = cur.execute("SELECT protobuf_to_json(?);", [input])
     output = res.fetchone()[0]
     assert output == expected
+
+    expected = '{"1_2":"A","2_3":{"1_0":-1},"3_2":{"1_1":1.23},"4_5":[nan,inf],"536870911_0":536870911}'
+
+    res = cur.execute("SELECT protobuf_to_json(?, 1);", [input])
+    output = res.fetchone()[0]
+    assert output == expected
+
+    # Packed varint
+    input = encode_str(100, b"\x00\x01\x02\xff\x00")
+    expected = '{"100_0":[0,1,2,127],"100_2":"AAEC/wA="}'
+
+    res = cur.execute("SELECT protobuf_to_json(?, 2);", [input])
+    output = res.fetchone()[0]
+    assert output == expected
+
+    # Packed float
+    input = encode_str(1000, b"\x00\x00\xf6\x42")
+    expected = '{"1000_0":[0,0,8566],"1000_2":"AAD2Qg==","1000_5":123}'
+
+    res = cur.execute("SELECT protobuf_to_json(?, 2);", [input])
+    output = res.fetchone()[0]
+    assert output == expected
+
+    # Packed double
+    input = encode_str(10000, b"\x00\x00\x00\x00\x00\x00\x45\xc0")
+    expected = '{"10000_1":-42,"10000_2":"AAAAAAAARcA=","10000_5":[0,-3.07812]}'
+
+    res = cur.execute("SELECT protobuf_to_json(?, 2);", [input])
+    output = res.fetchone()[0]
+    assert output == expected
+
 
 def test_protobuf_extract(db):
     cur = db.cursor()
