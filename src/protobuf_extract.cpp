@@ -23,7 +23,7 @@ namespace sqlite_protobuf
         struct Cache
         {
             // Protobuf decode cache
-            Field field;
+            Field* field;
             size_t length;
             uint8_t buffer[PROTOBUF_CACHE_BUFFER_SIZE];
         };
@@ -251,22 +251,24 @@ namespace sqlite_protobuf
             if (cache.length != 0 && cache.length == length && memcmp(&cache.buffer, buffer.start, length) == 0)
             {
                 // Chache hit -> use the decoded field from cache
-                root = &cache.field;
+                root = cache.field;
             }
             else if (length <= PROTOBUF_CACHE_BUFFER_SIZE)
             {
                 // Chache miss and buffer fits in cache -> decode protobuf and cache result
                 memcpy(cache.buffer, buffer.start, length);
+                free(cache.field);
                 cache.field = decodeProtobuf(buffer, false);
                 cache.length = length;
-                root = &cache.field;
+                root = cache.field;
             }
             else
             {
                 // Chache miss, but buffer does not fit in cache -> decode protobuf and invalidate cache
                 cache.length = 0;
+                free(cache.field);
                 cache.field = decodeProtobuf(buffer, false);
-                root = &cache.field;
+                root = cache.field;
             }
             
             // Traverse path to the desired field
@@ -279,8 +281,8 @@ namespace sqlite_protobuf
                 field = nullptr;
                 if (path[i+1].fieldNumber != 0) // Not at end of path
                 {
-                    if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
-                    if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
+                    if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
+                    if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
                 }
                 else
                 {
@@ -288,15 +290,15 @@ namespace sqlite_protobuf
                     {
                     case TYPE_BUFFER:
                         // We don't know the wire type, so try all until one succeeds
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);}
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);}
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);}
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);}
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_SGROUP, path[i].fieldIndex);}
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);}
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);}
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);}
                         break;
                     case TYPE_STRING:
                     case TYPE_BYTES:
-                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
+                        field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, path[i].fieldIndex);
                         break;
                     case TYPE_INT32:
                     case TYPE_INT64:
@@ -306,20 +308,20 @@ namespace sqlite_protobuf
                     case TYPE_SINT64:
                     case TYPE_BOOL:
                     case TYPE_ENUM:
-                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
+                        field = getSubField(parent, path[i].fieldNumber, WIRETYPE_VARINT, path[i].fieldIndex);
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     case TYPE_FIXED64:
                     case TYPE_SFIXED64:
                     case TYPE_DOUBLE:
-                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
+                        field = getSubField(parent, path[i].fieldNumber, WIRETYPE_I64, path[i].fieldIndex);
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     case TYPE_FIXED32:
                     case TYPE_SFIXED32:
                     case TYPE_FLOAT:
-                        field = parent->getSubField(path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
-                        if (field == nullptr) {field = parent->getSubField(path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
+                        field = getSubField(parent, path[i].fieldNumber, WIRETYPE_I32, path[i].fieldIndex);
+                        if (field == nullptr) {field = getSubField(parent, path[i].fieldNumber, WIRETYPE_LEN, 0); index = path[i].fieldIndex;} // Packed repeated
                         break;
                     default:
                         field = nullptr;
@@ -360,16 +362,16 @@ namespace sqlite_protobuf
             switch (type->type)
             {
             case TYPE_BUFFER:
-                sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
+                sqlite3_result_blob(context, (char *)result.start, getSize(&result), SQLITE_STATIC);
                 break;
             case TYPE_STRING:
-                sqlite3_result_text(context, (char *)result.start, result.size(), SQLITE_STATIC);
+                sqlite3_result_text(context, (char *)result.start, getSize(&result), SQLITE_STATIC);
                 break;
             case TYPE_BYTES:
-                sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
+                sqlite3_result_blob(context, (char *)result.start, getSize(&result), SQLITE_STATIC);
                 break;
             case TYPE_ENUM:
-                if (getInt32(&result, &valueInt32, index)) 
+                if (DECODE_OK == getInt32(&result, &valueInt32, index)) 
                 {
                     sqlite3_result_int(context, valueInt32);
                     for (size_t i = 0; i < type->enumEntiesSize; i++)
@@ -382,45 +384,45 @@ namespace sqlite_protobuf
                 }
                 break;
             case TYPE_INT32:
-                if (getInt32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
+                if (DECODE_OK == getInt32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 break;
             case TYPE_INT64:
-                if (getInt64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
+                if (DECODE_OK == getInt64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 break;
             case TYPE_UINT32:
-                if (getUint32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
+                if (DECODE_OK == getUint32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
                 break;
             case TYPE_UINT64:
-                if (getUint64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
+                if (DECODE_OK == getUint64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
                 break;
             case TYPE_SINT32:
-                if (getSint32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
+                if (DECODE_OK == getSint32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 break;
             case TYPE_SINT64:
-                if (getSint64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
+                if (DECODE_OK == getSint64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 break;
             case TYPE_BOOL:
-                if (getBool(&result, &valueBool, index)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
+                if (DECODE_OK == getBool(&result, &valueBool, index)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
                 break;
             case TYPE_FIXED64:
-                if (getFixed64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
+                if (DECODE_OK == getFixed64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
                 break;
             case TYPE_SFIXED64:
-                if (getSfixed64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
+                if (DECODE_OK == getSfixed64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
                 break;
             case TYPE_DOUBLE:
-                if (getDouble(&result, &valueDouble, index)) {sqlite3_result_double(context, valueDouble);}
+                if (DECODE_OK == getDouble(&result, &valueDouble, index)) {sqlite3_result_double(context, valueDouble);}
                 break;
             case TYPE_FIXED32:
-                if (getFixed32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
+                if (DECODE_OK == getFixed32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
                 break;
             case TYPE_SFIXED32:
-                if (getSfixed32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
+                if (DECODE_OK == getSfixed32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
                 break;
             case TYPE_FLOAT:
-                if (getFloat(&result, &valueFloat, index)) {sqlite3_result_double(context, valueFloat);}
+                if (DECODE_OK == getFloat(&result, &valueFloat, index)) {sqlite3_result_double(context, valueFloat);}
                 break;
             default:
                 break;

@@ -27,7 +27,7 @@ namespace sqlite_protobuf
         sqlite3_vtab_cursor base;   // Base class - must be first
         sqlite3_int64 iRowid;       // The rowid
         char* path;                 // Path to root field
-        Field field;                // Decoded protobuf message
+        Field *field;               // Decoded protobuf message
         Field *root;                // Root field
     };
 
@@ -96,7 +96,7 @@ namespace sqlite_protobuf
     static int protobufForeachClose(sqlite3_vtab_cursor *cur)
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor*)cur;
-        pCur->field.subFields.~vector();
+        free(pCur->field);
         sqlite3_free(pCur->path);
         sqlite3_free(pCur);
         return SQLITE_OK;
@@ -119,7 +119,8 @@ namespace sqlite_protobuf
     static int protobufForeachColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int col)
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor *)cur;
-        Field *field = &pCur->root->subFields[pCur->iRowid];
+        Field *subFields = pCur->root + pCur->root->subFieldsOffset;
+        Field *field = &subFields[pCur->iRowid];
         
         switch (col)
         {
@@ -127,19 +128,19 @@ namespace sqlite_protobuf
             sqlite3_result_int64(ctx, field->tag);
             break;
         case PROTOBUF_FOREACH_FIELD:
-            sqlite3_result_int64(ctx, field->fieldNum);
+            sqlite3_result_int64(ctx, getFieldNumber(*field));
             break;
         case PROTOBUF_FOREACH_WIRETYPE:
-            sqlite3_result_int64(ctx, field->wireType);
+            sqlite3_result_int64(ctx, getWireType(*field));
             break;
         case PROTOBUF_FOREACH_VALUE:
-            sqlite3_result_blob(ctx, (char*)field->value.start, field->value.size(), SQLITE_STATIC);
+            sqlite3_result_blob(ctx, (char*)field->value.start, getSize(&field->value), SQLITE_STATIC);
             break;
         case PROTOBUF_FOREACH_PARENT:
-            sqlite3_result_blob(ctx, (char*)pCur->root->value.start, pCur->root->value.size(), SQLITE_STATIC);
+            sqlite3_result_blob(ctx, (char*)pCur->root->value.start, getSize(&pCur->root->value), SQLITE_STATIC);
             break;
         case PROTOBUF_FOREACH_BUFFER:
-            sqlite3_result_blob(ctx, (char*)pCur->field.value.start, pCur->field.value.size(), SQLITE_STATIC);
+            sqlite3_result_blob(ctx, (char*)pCur->field->value.start, getSize(&pCur->field->value), SQLITE_STATIC);
             break;
         case PROTOBUF_FOREACH_ROOT:
             sqlite3_result_text(ctx, pCur->path, -1, SQLITE_STATIC);
@@ -166,7 +167,7 @@ namespace sqlite_protobuf
     static int protobufForeachEof(sqlite3_vtab_cursor *cur)
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor*)cur;
-        return pCur->root == nullptr || pCur->iRowid >= pCur->root->subFields.size();
+        return pCur->root == nullptr || pCur->iRowid >= pCur->root->subFieldsSize;
     }
 
     /*
@@ -192,7 +193,7 @@ namespace sqlite_protobuf
         buffer.start = static_cast<const uint8_t*>(sqlite3_value_blob(argv[0]));
         buffer.end = buffer.start + static_cast<size_t>(sqlite3_value_bytes(argv[0]));
         pCur->field = decodeProtobuf(buffer, true);
-        pCur->root = &pCur->field;
+        pCur->root = pCur->field;
         
         // Query strategy 3, path supplied perform search to find root
         if(idxNum == 3)
@@ -234,8 +235,8 @@ namespace sqlite_protobuf
                 // Try extracting field as submessage or group
                 parent = pCur->root;
                 pCur->root = nullptr;
-                if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);}
-                if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_SGROUP, fieldIndex);}
+                if (pCur->root == nullptr) {pCur->root = getSubField(parent, fieldNumber, WIRETYPE_LEN, fieldIndex);}
+                if (pCur->root == nullptr) {pCur->root = getSubField(parent, fieldNumber, WIRETYPE_SGROUP, fieldIndex);}
                 if (pCur->root == nullptr) {break;}
             }
         }

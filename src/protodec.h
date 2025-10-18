@@ -1,9 +1,10 @@
 #pragma once
 
-#include <map>
 #include <cstdint>
-#include <vector>
 #include <iostream>
+
+#define DECODE_OK 0
+#define DECODE_ERROR 1
 
 enum WireType
 {
@@ -25,23 +26,21 @@ struct Buffer
 {
     const uint8_t *start; // Pointer to start of buffer
     const uint8_t *end;   // Ponter to end of buffer
-
-    size_t size() const { return this->end - this->start; }
 };
+
+size_t getSize(const Buffer* buffer);
 
 struct Field
 {
     uint32_t tag;
-    uint32_t wireType;
-    uint32_t fieldNum;
-    uint32_t depth;
     Buffer value;
-    Field* parent;
-    std::vector<Field> subFields;
-
-    std::map< uint32_t, std::vector<Field *> > subFieldMap();
-    Field* getSubField(uint32_t fieldNumber, WireType wireType, int64_t index);
+    size_t subFieldsOffset;
+    size_t subFieldsSize;
 };
+
+int getWireType(const Field& field);
+int getFieldNumber(const Field& field);
+Field* getSubField(Field* field, uint32_t fieldNumber, WireType wireType, int64_t index);
 
 /**
  * @brief Decode protobuf message
@@ -51,7 +50,7 @@ struct Field
  * @param[in] packed try decoding packed fields
  * @return Field containing decoded protobuf message
  */
-Field decodeProtobuf(const Buffer &in, bool packed = false);
+Field* decodeProtobuf(Buffer in, bool packed = false);
 
 /**
  * @brief Convert Field into JSON

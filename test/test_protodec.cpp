@@ -105,14 +105,16 @@ int test_varint1(void)
 
         buffer.start = (const uint8_t*)data.c_str();
         buffer.end = buffer.start + data.length();
-        Field field = decodeProtobuf(buffer);
+        Field* field = decodeProtobuf(buffer);
         //toJson(&field, std::cout); std::cout << std::endl;
 
-        Field* f = field.getSubField(i+1, WIRETYPE_VARINT, 0);
+        Field* f = getSubField(field, i+1, WIRETYPE_VARINT, 0);
 
         ASSERT(f != nullptr);
-        ASSERT(getInt64(&f->value, &out, 0) != 0);
+        ASSERT(getInt64(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == in);
+
+        free(field);
     }
 
     return 0;
@@ -134,14 +136,16 @@ int test_varint2(void)
 
         buffer.start = (const uint8_t*)data.c_str();
         buffer.end = buffer.start + data.length();
-        Field field = decodeProtobuf(buffer);
+        Field* field = decodeProtobuf(buffer);
         //toJson(&field, std::cout); std::cout << std::endl;
 
-        Field* f = field.getSubField(i+1, WIRETYPE_VARINT, 0);
+        Field* f = getSubField(field, i+1, WIRETYPE_VARINT, 0);
 
         ASSERT(f != nullptr);
-        ASSERT(getInt64(&f->value, &out, 0) != 0);
+        ASSERT(getInt64(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == in);
+
+        free(field);
     }
 
     return 0;
@@ -161,15 +165,16 @@ int test_i64(void)
 
         buffer.start = (const uint8_t*)data.c_str();
         buffer.end = buffer.start + data.length();
-        Field field = decodeProtobuf(buffer);
+        Field* field = decodeProtobuf(buffer);
         //toJson(&field, std::cout); std::cout << std::endl;
 
-        Field* f = field.getSubField(i+1, WIRETYPE_I64, 0);
+        Field* f = getSubField(field, i+1, WIRETYPE_I64, 0);
 
         ASSERT(f != nullptr);
-        ASSERT(getDouble(&f->value, &out, 0) != 0);
+        ASSERT(getDouble(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == values[i]);
 
+        free(field);
     }
 
     return 0;
@@ -190,13 +195,15 @@ int test_len(void)
 
         buffer.start = (const uint8_t*)data.c_str();
         buffer.end = buffer.start + data.length();
-        Field field = decodeProtobuf(buffer);
+        Field* field = decodeProtobuf(buffer);
         //toJson(&field, std::cout); std::cout << std::endl;
 
-        Field* f = field.getSubField(i+1, WIRETYPE_LEN, 0);
+        Field* f = getSubField(field, i+1, WIRETYPE_LEN, 0);
 
         ASSERT(f != nullptr);
         ASSERT(memcmp(f->value.start, str.c_str(), str.length()) == 0);
+
+        free(field);
     }
 
     return 0;
@@ -216,15 +223,16 @@ int test_i32(void)
 
         buffer.start = (const uint8_t*)data.c_str();
         buffer.end = buffer.start + data.length();
-        Field field = decodeProtobuf(buffer);
+        Field* field = decodeProtobuf(buffer);
         //toJson(&field, std::cout); std::cout << std::endl;
 
-        Field* f = field.getSubField(i+1, WIRETYPE_I32, 0);
+        Field* f = getSubField(field, i+1, WIRETYPE_I32, 0);
 
         ASSERT(f != nullptr);
-        ASSERT(getFloat(&f->value, &out, 0) != 0);
+        ASSERT(getFloat(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == values[i]);
 
+        free(field);
     }
 
     return 0;
@@ -239,13 +247,15 @@ int test_group(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    Field* f = field.getSubField(1, WIRETYPE_SGROUP, 0);
+    Field* f = getSubField(field, 1, WIRETYPE_SGROUP, 0);
 
     ASSERT(f != nullptr);
     ASSERT(memcmp(f->value.start, subData.c_str(), subData.length()) == 0);
+
+    free(field);
 
     return 0;
 }
@@ -259,13 +269,15 @@ int test_subfield(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    Field* f = field.getSubField(1, WIRETYPE_LEN, 0);
+    Field* f = getSubField(field, 1, WIRETYPE_LEN, 0);
 
     ASSERT(f != nullptr);
     ASSERT(memcmp(f->value.start, subData.c_str(), subData.length()) == 0);
+
+    free(field);
 
     return 0;
 }
@@ -288,35 +300,37 @@ int test_repeated_varint(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        f = field.getSubField(1, WIRETYPE_VARINT, i);
+        f = getSubField(field, 1, WIRETYPE_VARINT, i);
         in = (UINT64_MAX / length) * i;
 
         ASSERT(f != nullptr);
-        ASSERT(getUint64(&f->value, &out, 0) != 0);
+        ASSERT(getUint64(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == in);
 
         // Negative index
-        f = field.getSubField(1, WIRETYPE_VARINT,  -(i + 1));
+        f = getSubField(field, 1, WIRETYPE_VARINT,  -(i + 1));
         in = (UINT64_MAX / length) * (length - 1 - i);
 
         ASSERT(f != nullptr);
-        ASSERT(getUint64(&f->value, &out, 0) != 0);
+        ASSERT(getUint64(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == in);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_VARINT, length);
+    f = getSubField(field, 1, WIRETYPE_VARINT, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_VARINT, -(length + 1));
+    f = getSubField(field, 1, WIRETYPE_VARINT, -(length + 1));
     ASSERT(f == nullptr);
+
+    free(field);
 
     return 0;
 }
@@ -340,30 +354,32 @@ int test_packed_varint(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    f = field.getSubField(1, WIRETYPE_LEN, 0);
+    f = getSubField(field, 1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
         in = (UINT64_MAX / length) * i;
-        ASSERT(getUint64(&f->value, &out, i) != 0);
+        ASSERT(getUint64(&f->value, &out, i) == DECODE_OK);
         ASSERT(out == in);
 
         // Negative index
         in = (UINT64_MAX / length) * (length - 1 - i);
-        ASSERT(getUint64(&f->value, &out, -(i + 1)) != 0);
+        ASSERT(getUint64(&f->value, &out, -(i + 1)) == DECODE_OK);
         ASSERT(out == in);
     }
 
     // Positive index out of bounds
-    ASSERT(getUint64(&f->value, &out, length) == 0);
+    ASSERT(getUint64(&f->value, &out, length) == DECODE_ERROR);
 
     // Negative index out of bounds
-    ASSERT(getUint64(&f->value, &out, -(length + 1)) == 0);
+    ASSERT(getUint64(&f->value, &out, -(length + 1)) == DECODE_ERROR);
+
+    free(field);
 
     return 0;
 }
@@ -385,33 +401,35 @@ int test_repeated_i32(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        f = field.getSubField(1, WIRETYPE_I32, i);
+        f = getSubField(field, 1, WIRETYPE_I32, i);
 
         ASSERT(f != nullptr);
-        ASSERT(getFloat(&f->value, &out, 0) != 0);
+        ASSERT(getFloat(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == i);
 
         // Negative index
-        f = field.getSubField(1, WIRETYPE_I32,  -(i + 1));
+        f = getSubField(field, 1, WIRETYPE_I32,  -(i + 1));
 
         ASSERT(f != nullptr);
-        ASSERT(getFloat(&f->value, &out, 0) != 0);
+        ASSERT(getFloat(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_I32, length);
+    f = getSubField(field, 1, WIRETYPE_I32, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_I32, -(length + 1));
+    f = getSubField(field, 1, WIRETYPE_I32, -(length + 1));
     ASSERT(f == nullptr);
+
+    free(field);
 
     return 0;
 }
@@ -434,28 +452,30 @@ int test_packed_i32(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    f = field.getSubField(1, WIRETYPE_LEN, 0);
+    f = getSubField(field, 1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        ASSERT(getFixed32(&f->value, &out, i) != 0);
+        ASSERT(getFixed32(&f->value, &out, i) == DECODE_OK);
         ASSERT(out == i);
 
         // Negative index
-        ASSERT(getFixed32(&f->value, &out, -(i + 1)) != 0);
+        ASSERT(getFixed32(&f->value, &out, -(i + 1)) == DECODE_OK);
         ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    ASSERT(getFixed32(&f->value, &out, length) == 0);
+    ASSERT(getFixed32(&f->value, &out, length) == DECODE_ERROR);
 
     // Negative index out of bounds
-    ASSERT(getFixed32(&f->value, &out, -(length + 1)) == 0);
+    ASSERT(getFixed32(&f->value, &out, -(length + 1)) == DECODE_ERROR);
+
+    free(field);
 
     return 0;
 }
@@ -477,33 +497,35 @@ int test_repeated_i64(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        f = field.getSubField(1, WIRETYPE_I64, i);
+        f = getSubField(field, 1, WIRETYPE_I64, i);
 
         ASSERT(f != nullptr);
-        ASSERT(getDouble(&f->value, &out, 0) != 0);
+        ASSERT(getDouble(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == i);
 
         // Negative index
-        f = field.getSubField(1, WIRETYPE_I64,  -(i + 1));
+        f = getSubField(field, 1, WIRETYPE_I64,  -(i + 1));
 
         ASSERT(f != nullptr);
-        ASSERT(getDouble(&f->value, &out, 0) != 0);
+        ASSERT(getDouble(&f->value, &out, 0) == DECODE_OK);
         ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_I64, length);
+    f = getSubField(field, 1, WIRETYPE_I64, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_I64, -(length + 1));
+    f = getSubField(field, 1, WIRETYPE_I64, -(length + 1));
     ASSERT(f == nullptr);
+
+    free(field);
 
     return 0;
 }
@@ -526,28 +548,30 @@ int test_packed_i64(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
-    f = field.getSubField(1, WIRETYPE_LEN, 0);
+    f = getSubField(field, 1, WIRETYPE_LEN, 0);
     ASSERT(f != nullptr);
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        ASSERT(getFixed64(&f->value, &out, i) != 0);
+        ASSERT(getFixed64(&f->value, &out, i) == DECODE_OK);
         ASSERT(out == i);
 
         // Negative index
-        ASSERT(getFixed64(&f->value, &out, -(i + 1)) != 0);
+        ASSERT(getFixed64(&f->value, &out, -(i + 1)) == DECODE_OK);
         ASSERT(out == length - 1 - i);
     }
 
     // Positive index out of bounds
-    ASSERT(getFixed64(&f->value, &out, length) == 0);
+    ASSERT(getFixed64(&f->value, &out, length) == DECODE_ERROR);
 
     // Negative index out of bounds
-    ASSERT(getFixed64(&f->value, &out, -(length + 1)) == 0);
+    ASSERT(getFixed64(&f->value, &out, -(length + 1)) == DECODE_ERROR);
+
+    free(field);
 
     return 0;
 }
@@ -572,31 +596,33 @@ int test_repeated_len(void)
 
     buffer.start = (const uint8_t*)data.c_str();
     buffer.end = buffer.start + data.length();
-    Field field = decodeProtobuf(buffer);
+    Field* field = decodeProtobuf(buffer);
     //toJson(&field, std::cout); std::cout << std::endl;
 
     for (int i = 0; i < length; i++)
     {
         // Positve index
-        f = field.getSubField(1, WIRETYPE_LEN, i);
+        f = getSubField(field, 1, WIRETYPE_LEN, i);
         ASSERT(f != nullptr);
         str = std::to_string(i);
         ASSERT(memcmp(f->value.start, str.c_str(), str.length()) == 0);
 
         // Negative index
-        f = field.getSubField(1, WIRETYPE_LEN,  -(i + 1));
+        f = getSubField(field, 1, WIRETYPE_LEN,  -(i + 1));
         ASSERT(f != nullptr);
         str = std::to_string(length - 1 - i);
         ASSERT(memcmp(f->value.start, str.c_str(), str.length()) == 0);
     }
 
     // Positive index out of bounds
-    f = field.getSubField(1, WIRETYPE_LEN, length);
+    f = getSubField(field, 1, WIRETYPE_LEN, length);
     ASSERT(f == nullptr);
 
     // Negative index out of bounds
-    f = field.getSubField(1, WIRETYPE_LEN, -(length + 1));
+    f = getSubField(field, 1, WIRETYPE_LEN, -(length + 1));
     ASSERT(f == nullptr);
+
+    free(field);
 
     return 0;
 }
@@ -610,12 +636,14 @@ int test_type_int32(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(1, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 1, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getInt32(&f->value, &result, 0) != 0);
+    ASSERT(getInt32(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -629,12 +657,14 @@ int test_type_int64(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(2, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 2, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getInt64(&f->value, &result, 0) != 0);
+    ASSERT(getInt64(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -648,12 +678,14 @@ int test_type_uint32(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(3, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 3, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getUint32(&f->value, &result, 0) != 0);
+    ASSERT(getUint32(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -667,12 +699,14 @@ int test_type_uint64(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(4, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 4, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getUint64(&f->value, &result, 0) != 0);
+    ASSERT(getUint64(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -686,12 +720,14 @@ int test_type_sint32(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(5, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 5, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getSint32(&f->value, &result, 0) != 0);
+    ASSERT(getSint32(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -705,12 +741,14 @@ int test_type_sint64(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(6, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 6, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getSint64(&f->value, &result, 0) != 0);
+    ASSERT(getSint64(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -724,12 +762,14 @@ int test_type_bool(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(7, WIRETYPE_VARINT, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 7, WIRETYPE_VARINT, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getBool(&f->value, &result, 0) != 0);
+    ASSERT(getBool(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -743,12 +783,14 @@ int test_type_fixed64(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(8, WIRETYPE_I64, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 8, WIRETYPE_I64, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getFixed64(&f->value, &result, 0) != 0);
+    ASSERT(getFixed64(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -762,12 +804,14 @@ int test_type_sfixed64(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(9, WIRETYPE_I64, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 9, WIRETYPE_I64, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getSfixed64(&f->value, &result, 0) != 0);
+    ASSERT(getSfixed64(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -781,12 +825,14 @@ int test_type_double(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(10, WIRETYPE_I64, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 10, WIRETYPE_I64, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getDouble(&f->value, &result, 0) != 0);
+    ASSERT(getDouble(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -800,12 +846,14 @@ int test_type_fixed32(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(11, WIRETYPE_I32, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 11, WIRETYPE_I32, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getFixed32(&f->value, &result, 0) != 0);
+    ASSERT(getFixed32(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -819,12 +867,14 @@ int test_type_sfixed32(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(12, WIRETYPE_I32, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 12, WIRETYPE_I32, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getSfixed32(&f->value, &result, 0) != 0);
+    ASSERT(getSfixed32(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }
@@ -838,12 +888,14 @@ int test_type_float(void)
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
-    Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(13, WIRETYPE_I32, 0);
+    Field *field = decodeProtobuf(buffer);
+    Field *f = getSubField(field, 13, WIRETYPE_I32, 0);
     
     ASSERT(f != nullptr);
-    ASSERT(getFloat(&f->value, &result, 0) != 0);
+    ASSERT(getFloat(&f->value, &result, 0) == DECODE_OK);
     ASSERT(result == expected);
+
+    free(field);
 
     return 0;
 }

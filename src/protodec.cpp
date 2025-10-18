@@ -1,15 +1,37 @@
 #include "protodec.h"
 
 #include <cstring>
-
-#define DECODE_ERROR 0
-#define DECODE_OK 1
+#include <stdlib.h>
 
 #define TAG_BITS 3
 #define MAX_VARINT_64BYTES 10
 #define MAX_VARINT_32BYTES 5
 
-static int decodeField(Field *field, Buffer *in, bool packed);
+struct Fields
+{
+    Field* data;
+    size_t size;
+    size_t capacity;
+};
+
+static inline void append(Fields *fields, const Field *field)
+{
+    if (fields->size >= fields->capacity)
+    {
+        fields->capacity = fields->capacity == 0 ? 16 : fields->capacity * 2;
+        fields->data = (Field* )realloc(fields->data, sizeof(Field) * fields->capacity);
+    }
+    memset(&fields->data[fields->size], 0, sizeof(Field));
+    fields->data[fields->size] = *field;
+    fields->size++;
+}
+
+static int decodeField(Field *field, Buffer *in);
+
+size_t getSize(const Buffer* buffer) 
+{
+    return buffer->end - buffer->start; 
+}
 
 static inline uint32_t getTag(uint32_t fieldNumber, WireType wireType)
 {
@@ -26,36 +48,58 @@ static inline int getFieldNumber(uint32_t tag)
     return tag >> TAG_BITS;
 }
 
-std::map< uint32_t, std::vector<Field *> > Field::subFieldMap()
+int getWireType(const Field& field)
 {
-    std::map< uint32_t, std::vector<Field *> > m;
-    for (Field &f : this->subFields)
-    {
-        m[f.tag].push_back(&f);
-    }
-    return m;
+    return getWireType(field.tag);
 }
 
-Field* Field::getSubField(uint32_t fieldNumber, WireType wireType, int64_t index)
+int getFieldNumber(const Field& field)
+{
+    return getFieldNumber(field.tag);
+}
+
+static inline Field* getSubFields(Field* field)
+{
+    return field->subFieldsSize > 0 ? field + field->subFieldsOffset : nullptr;
+}
+
+static inline int compareFields(const void *a, const void *b)
+{
+    const Field* fieldA = *(const Field**)a;
+    const Field* fieldB = *(const Field**)b;
+    return fieldA->tag == fieldB->tag ? 0 : fieldA->tag > fieldB->tag ? 1 : -1;
+}
+
+static inline Field** getSubFieldsSorted(Field* field)
+{
+    Field** subFieldsSorted = (Field**)malloc(sizeof(Field*) * field->subFieldsSize);
+    Field* subFields = getSubFields(field);
+    for (size_t i = 0; i < field->subFieldsSize; i++){subFieldsSorted[i] = &subFields[i];}
+    qsort(subFieldsSorted, field->subFieldsSize, sizeof(Field*), compareFields);
+    return subFieldsSorted;
+}
+
+Field* getSubField(Field* field, uint32_t fieldNumber, WireType wireType, int64_t index)
 {    
     uint32_t tag = getTag(fieldNumber, wireType);
+    Field* subFields = getSubFields(field);
     if (index >= 0) // Positive index, iterate forward through list
     {
-        for (size_t i = 0; i < subFields.size(); i++)
+        for (size_t i = 0; i < field->subFieldsSize; i++)
         {
-            if (subFields.at(i).tag == tag && index-- == 0)
+            if (subFields[i].tag == tag && index-- == 0)
             {
-                return &subFields.at(i);
+                return &subFields[i];
             }
         }
     }
     else // Negative index iterate backward through list
     {
-        for (size_t i = 1; i <= subFields.size(); i++)
+        for (size_t i = 1; i <= field->subFieldsSize; i++)
         {
-            if (subFields.at(subFields.size() - i).tag == tag && ++index == 0)
+            if (subFields[field->subFieldsSize - i].tag == tag && ++index == 0)
             {
-                return &subFields.at(subFields.size() - i);
+                return &subFields[field->subFieldsSize - i];
             }
         }
     }
@@ -163,123 +207,130 @@ static inline int decodeString(Field *field, Buffer *in)
     return DECODE_OK;
 }
 
-static inline int decodeSubField(Field *field, bool packed)
+static inline int decodePacked(Fields *fields, size_t parentIndex, Field *field)
 {
-    Buffer b = field->value;
-    Field subField;
-    int64_t tag;
+    Field subField = {0};
+    Buffer b;
+    uint32_t fieldNumber = getFieldNumber(field->tag);
 
+    // Decode as packed VARINT
+    subField.tag = getTag(fieldNumber, WIRETYPE_VARINT);
+    b = field->value;
+    int fieldCount = 0;
     while (b.start < b.end)
     {
-        // Read tag from buffer
-        const uint8_t *ptr = readVarint(&b, &tag, MAX_VARINT_32BYTES);
-
-        // Initialize sub field
-        subField.tag = (uint32_t)tag;
-        subField.fieldNum = getFieldNumber(subField.tag);
-        subField.wireType = getWireType(subField.tag);
-        subField.subFields.clear();
-        subField.depth = field->depth + 1;
-        subField.parent = field;
-
-        // Check validity of field tag
-        if (subField.fieldNum == 0)
+        if (DECODE_OK == decodeVarint(&subField, &b))
         {
-            field->subFields.clear();
-            return DECODE_ERROR;
+            append(fields, &subField);
+            fields->data[parentIndex].subFieldsSize++;
+            fieldCount++;
         }
-
-        // Check if we have reached end of a group
-        if (field->wireType == WIRETYPE_SGROUP && subField.wireType == WIRETYPE_EGROUP)
+        else
         {
-            field->value.end = b.start;
-            return DECODE_OK;
+            // Error when decoding subfields, clean up
+            fields->data[parentIndex].subFieldsSize -= fieldCount;
+            fields->size -= fieldCount;
+            break;
         }
+    }
 
-        // Advance buffer past tag and decode field
-        b.start = ptr;
-        if (DECODE_OK != decodeField(&subField, &b, packed))
+    // Decode as packed I64
+    subField.tag = getTag(fieldNumber, WIRETYPE_I64);
+    b = field->value;
+    if ((b.end - b.start) % sizeof(int64_t) == 0)
+    {
+        while (b.start < b.end)
         {
-            field->subFields.clear();
-            return DECODE_ERROR;
+            decodeFixed64(&subField, &b);
+            append(fields, &subField);
+            fields->data[parentIndex].subFieldsSize++;
         }
+    }
 
-        field->subFields.push_back(subField);
+    // Decode as packed I32
+    subField.tag = getTag(fieldNumber, WIRETYPE_I32);
+    b = field->value;
+    if ((b.end - b.start) % sizeof(int32_t) == 0)
+    {
+        while (b.start < b.end)
+        {
+            decodeFixed32(&subField, &b);
+            append(fields, &subField);
+            fields->data[parentIndex].subFieldsSize++;
+        }
     }
 
     return DECODE_OK;
 }
 
-static inline int decodePacked(Field *field, WireType wireType)
+static inline int decodeSubField(Fields *fields, size_t parentIndex, bool packed)
 {
-    Buffer b = field->value;
+    Field subField = {0};
+    Buffer b = fields->data[parentIndex].value;
 
-    // Check if buffer data fits with packed wiretype
-    switch (wireType)
-    {
-    case WIRETYPE_VARINT:
-        break;
-    case WIRETYPE_I32:
-        if ((b.end - b.start) % sizeof(int32_t) != 0) {return DECODE_ERROR;}
-        break;
-    case WIRETYPE_I64:
-        if ((b.end - b.start) % sizeof(int64_t) != 0) {return DECODE_ERROR;}
-        break;
-    default:
-        return DECODE_ERROR;
-    }
-
-    size_t sizeBeforeDecode = field->parent->subFields.size();
     while (b.start < b.end)
     {
-        Field subField;
-        subField.tag = getTag(field->fieldNum, wireType);
-        subField.fieldNum = getFieldNumber(subField.tag);
-        subField.wireType = getWireType(subField.tag);
-        subField.depth = field->depth;
-        subField.parent = field->parent;
-
-        if (DECODE_OK != decodeField(&subField, &b, true))
+        if (DECODE_OK == decodeField(&subField, &b))
         {
-            // Remove the fields that were added since it can not be a packed repeted field
-            field->parent->subFields.resize(sizeBeforeDecode);
+            append(fields, &subField);
+            fields->data[parentIndex].subFieldsSize++;
+
+            if (packed && WIRETYPE_LEN == getWireType(subField.tag))
+            {
+                decodePacked(fields, parentIndex, &subField);
+            }
+        }
+        else
+        {
+            // Error when decoding subfields, clean up
+            fields->size -= fields->data[parentIndex].subFieldsSize;
+            fields->data[parentIndex].subFieldsSize = 0;
             return DECODE_ERROR;
         }
-        // field is a length delimited representation of the packed repeted field, so add them to parent
-        field->parent->subFields.push_back(subField);
     }
 
     return DECODE_OK;
 }
 
-static inline int decodeGroup(Field *field, Buffer *in, bool packed)
+static inline int decodeGroup(Field *field, Buffer *in)
 {
-    int64_t tag;
-
+    // Initialize field
     field->value.start = in->start;
-    field->value.end = in->end;
+    field->value.end = in->start;
 
-    if (DECODE_OK != decodeSubField(field, packed))
+    if (getWireType(field->tag) == WIRETYPE_EGROUP) return DECODE_ERROR;
+
+    // Iterate through sub fields until we reach end of group
+    Field subField = {0};
+    while (DECODE_OK == decodeField(&subField, in))
     {
-        return DECODE_ERROR;
+        field->value.end = in->start;
     }
 
-    in->start = field->value.end;
-
-    // Read group end tag and check that it matches group start tag
-    const uint8_t *ptr = readVarint(in, &tag, MAX_VARINT_32BYTES);
-    if (ptr && tag == getTag(field->fieldNum, WIRETYPE_EGROUP))
+    if (getTag(getFieldNumber(field->tag), WIRETYPE_EGROUP) == subField.tag)
     {
-        in->start = ptr;
+        in->start = subField.value.end;
         return DECODE_OK;
     }
 
     return DECODE_ERROR;
 }
 
-static inline int decodeField(Field *field, Buffer *in, bool packed)
+static inline int decodeField(Field *field, Buffer *in)
 {
-    switch (field->wireType)
+    int64_t tag;
+
+    // Read tag from buffer
+    const uint8_t *ptr = readVarint(in, &tag, MAX_VARINT_32BYTES);
+
+    // Check validity of tag
+    if (getFieldNumber(tag) == 0 || !ptr) return DECODE_ERROR;
+
+    // Initialize field
+    field->tag = (uint32_t)tag;
+    in->start = ptr;
+    
+    switch (getWireType(field->tag))
     {
     case WIRETYPE_VARINT:
         return decodeVarint(field, in);
@@ -288,55 +339,50 @@ static inline int decodeField(Field *field, Buffer *in, bool packed)
         return decodeFixed64(field, in);
 
     case WIRETYPE_LEN:
-        // Try deconding as string, should always work for well formed WIRETYPE_LEN
-        if (DECODE_OK != decodeString(field, in))
-        {
-            return DECODE_ERROR;
-        }
-
-        // Try decoding as sub fields
-        if (DECODE_OK == decodeSubField(field, packed))
-        {
-            return DECODE_OK;
-        }
-
-        // Try decoding as packed repeated fields
-        if (packed)
-        {
-            decodePacked(field, WIRETYPE_VARINT);
-            decodePacked(field, WIRETYPE_I64);
-            decodePacked(field, WIRETYPE_I32);
-        }
-
-        return DECODE_OK;
+        return decodeString(field, in); 
 
     case WIRETYPE_I32:
         return decodeFixed32(field, in);
 
     case WIRETYPE_SGROUP:
-        return decodeGroup(field, in, packed);
-
-    default:
-        return DECODE_ERROR;
+    case WIRETYPE_EGROUP:
+        return decodeGroup(field, in);
     }
 
     return DECODE_ERROR;
 }
 
-Field decodeProtobuf(const Buffer &in, bool packed)
+Field* decodeProtobuf(Buffer in, bool packed)
 {
-    Field field;
-    memset(&field, 0, sizeof(Field));
-    field.wireType = WIRETYPE_LEN;
-    field.value = in;
-    decodeSubField(&field, packed);
-    return field;
+    // Create list for storing decoded fields
+    Fields fields = {0};
+
+    // Set root field
+    Field root = {0};
+    root.tag = getTag(0, WIRETYPE_LEN);
+    root.value = in;
+    append(&fields, &root);
+
+    // Breadth first decode of fields 
+    for (size_t i = 0; i < fields.size; i++)
+    {
+        Field *parent = &fields.data[i];
+        parent->subFieldsSize = 0;
+        parent->subFieldsOffset = fields.size - i;
+
+        if (getWireType(parent->tag) == WIRETYPE_LEN || getWireType(parent->tag) == WIRETYPE_SGROUP)
+        {
+            decodeSubField(&fields, i, packed);
+        }
+    }
+
+    return fields.data;
 }
 
 static inline void base64Encode(const Buffer &in, std::ostream &os)
 {
     int val = 0, valb = -6, size = 0;
-    for (size_t i = 0; i < in.size(); i++)
+    for (size_t i = 0; i < getSize(&in); i++)
     {
         val = (val << 8) + in.start[i];
         valb += 8;
@@ -360,9 +406,9 @@ static inline void base64Encode(const Buffer &in, std::ostream &os)
 
 static inline bool isPrintable(const Buffer &b)
 {
-    for (size_t i = 0; i < b.size(); i++)
+    for (size_t i = 0; i < getSize(&b); i++)
     {
-        if (!std::isprint(b.start[i]))
+        if (!isprint(b.start[i]))
         {
             return false;
         }
@@ -372,54 +418,64 @@ static inline bool isPrintable(const Buffer &b)
 
 void toJson(Field *field, std::ostream &os, bool showType)
 {
-    if (!field->subFields.empty())
+    if (field->subFieldsSize != 0)
     {
         os << "{";
-        auto m = field->subFieldMap();
-        for (auto it = m.begin(); it != m.end(); it)
+        Field** subFields = getSubFieldsSorted(field);
+        size_t i = 0;
+
+        while (i < field->subFieldsSize)
         {
-            os << "\"" << getFieldNumber(it->first);
+            uint32_t tag = subFields[i]->tag;
+            os << "\"" << getFieldNumber(tag);
             if (showType)
             {
-                os << "_" << getWireType(it->first); 
+                os << "_" << getWireType(tag); 
             }
             os << "\":";
-            if (it->second.size() > 1)
+            if (i + 1 < field->subFieldsSize && tag == subFields[i+1]->tag)
             {
                 os << "[";
-            }
-            for (auto f : it->second)
-            {
-                toJson(f, os, showType);
-                if (f != it->second.back())
+                while (true)
                 {
-                    os << ",";
+                    toJson(subFields[i++], os, showType);
+                    if (i < field->subFieldsSize && tag == subFields[i]->tag)
+                    {
+                        os << ",";
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
-            }
-            if (it->second.size() > 1)
-            {
                 os << "]";
             }
-            if (++it != m.end())
+            else
+            {
+                toJson(subFields[i++], os, showType);
+            }
+            if (i < field->subFieldsSize)
             {
                 os << ",";
             }
         }
         os << "}";
+
+        free(subFields);
     }
-    else if (field->wireType == WIRETYPE_VARINT)
+    else if (getWireType(field->tag) == WIRETYPE_VARINT)
     {
         int64_t number;
         getInt64(&field->value, &number, 0); // Guess type is signed 64 bit int
         os << number;
     }
-    else if (field->wireType == WIRETYPE_I64)
+    else if (getWireType(field->tag) == WIRETYPE_I64)
     {
         double number;
         getDouble(&field->value, &number, 0); // Guess type is double
         os << number;
     }
-    else if (field->wireType == WIRETYPE_I32)
+    else if (getWireType(field->tag) == WIRETYPE_I32)
     {
         float number;
         getFloat(&field->value, &number, 0); // Guess type is float
@@ -431,7 +487,7 @@ void toJson(Field *field, std::ostream &os, bool showType)
         if (isPrintable(field->value))
         {
             // Write buffer directly to json
-            os.write((const char *)field->value.start, field->value.size());
+            os.write((const char *)field->value.start, getSize(&field->value));
         }
         else
         {

@@ -34,12 +34,15 @@ namespace sqlite_protobuf
             Buffer buffer;
             buffer.start = static_cast<const uint8_t *>(sqlite3_value_blob(data));
             buffer.end = buffer.start + static_cast<size_t>(sqlite3_value_bytes(data));
-            Field field = decodeProtobuf(buffer, mode > 1);
+            Field* field = decodeProtobuf(buffer, mode > 1);
 
             // Convert to json
             std::ostringstream os;
-            toJson(&field, os, mode > 0);
+            toJson(field, os, mode > 0);
             std::string json = os.str();
+
+            // Clean up
+            free(field);
 
             // Return result
             sqlite3_result_text(context, json.c_str(), json.length(), SQLITE_TRANSIENT);
