@@ -9,21 +9,21 @@ on:
 
 jobs:
   build-linux-x64:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
     - name: Install compilers
       run: |
         sudo apt-get update
-        sudo apt-get install gcc-7 g++-7
+        sudo apt-get install gcc-9 g++-9
     - name: Build release
       run: |
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . --config=release
       env:
-        CC: gcc-7
-        CXX: g++-7
+        CC: gcc-9
+        CXX: g++-9
     - name: Test
       run: |
         cd build
@@ -34,21 +34,21 @@ jobs:
         path: build/*.so
 
   build-linux-x86:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
     - name: Install compilers
       run: |
         sudo apt-get update
-        sudo apt-get -y install gcc-7 g++-7 gcc-7-multilib g++-7-multilib
+        sudo apt-get -y install gcc-9 g++-9 gcc-9-multilib g++-9-multilib
     - name: Build release
       run: |
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32"
         cmake --build . --config=release
       env:
-        CC: gcc-7
-        CXX: g++-7
+        CC: gcc-9
+        CXX: g++-9
     - uses: actions/upload-artifact@v4
       with:
         name: linux-x86
