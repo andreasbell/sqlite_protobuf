@@ -1,7 +1,6 @@
 #include "protobuf_extract.h"
 #include "sqlite3ext.h"
 
-#include <string>
 #include <cstring>
 
 #include "protodec.h"
@@ -30,18 +29,14 @@ namespace sqlite_protobuf
         };
 
         Cache cache = {0};
-
-        std::string string_from_sqlite3_value(sqlite3_value *value)
-        {
-            const char *text = static_cast<const char *>(sqlite3_value_blob(value));
-            size_t text_size = static_cast<size_t>(sqlite3_value_bytes(value));
-            return std::string(text, text_size);
-        }
         
-        Path* path_from_string(const std::string &pathString)
+        Path* path_from_value(sqlite3_value *value)
         {
+            const char *pathText = (const char *)sqlite3_value_text(value); // NULL terminated cstring
+            int pathLength = (int)sqlite3_value_bytes(value);
+
             // Check that the path begins with $, representing the root of the tree
-            if (pathString.length() == 0 || pathString[0] != '$')
+            if (pathLength == 0 || pathText[0] != '$')
             {
                 return nullptr;
             }
@@ -50,28 +45,21 @@ namespace sqlite_protobuf
             size_t length = 0; // Initialize path length 0
             Path* path = (Path*)sqlite3_malloc64(sizeof(Path) * capacity);
 
-            int fieldNumber, fieldIndex;
-
             // Parse the path string and traverse the message
-            size_t fieldStart = pathString.find(".", 0);
-            while(fieldStart < pathString.size())
+            int fieldNumber, fieldIndex;
+            const char *fieldStart = (const char *)strchr(pathText, '.');
+            while(fieldStart)
             {
-                size_t fieldEnd = pathString.find(".", fieldStart + 1);
-                size_t indexStart = pathString.find("[", fieldStart + 1);
-                size_t indexEnd = pathString.find("]", fieldStart + 1);
+                const char *fieldEnd   = (const char *)strchr(fieldStart + 1, '.');
+                const char *indexStart = (const char *)strchr(fieldStart + 1, '[');
+                const char *indexEnd   = (const char *)strchr(fieldStart + 1, ']');
 
-                fieldEnd = (fieldEnd == std::string::npos) ? pathString.size() : fieldEnd;
+                // Extract field and index
+                fieldNumber = atoi(fieldStart + 1);
+                fieldIndex  = (indexStart && indexEnd && (indexStart < fieldEnd || fieldEnd == nullptr)) ? atoi(indexStart + 1) : 0;
 
-                if (indexStart < fieldEnd && indexEnd < fieldEnd) // Both field and index supplied
-                {
-                    fieldNumber = std::atoi(pathString.substr(fieldStart + 1, indexStart - fieldStart - 1).c_str());
-                    fieldIndex  = std::atoi(pathString.substr(indexStart + 1, indexEnd - indexStart - 1).c_str());
-                }
-                else // Only field supplied
-                {
-                    fieldNumber = std::atoi(pathString.substr(fieldStart + 1, fieldEnd - fieldStart - 1).c_str());
-                    fieldIndex  = 0; 
-                }
+                // Move path ponter forward
+                fieldStart = fieldEnd;
 
                 // Add path entry to end of list
                 if (path != nullptr)
@@ -86,9 +74,6 @@ namespace sqlite_protobuf
                         path = (Path*)sqlite3_realloc64(path, sizeof(Path) * capacity);
                     }
                 }
-
-                // Move path ponter forward
-                fieldStart = fieldEnd;
             }
 
             // Set fieldNumber to the reserved number 0 to indicate end of path 
@@ -97,7 +82,7 @@ namespace sqlite_protobuf
             return path;          
         }
 
-        enum Type 
+        enum ProtobufType
         {
             // SPECIAL TYPES
             TYPE_UNKNOWN,
@@ -124,42 +109,89 @@ namespace sqlite_protobuf
             TYPE_FLOAT,
         };
 
-        Type type_from_string(const std::string &type)
+        struct EnumEntry
         {
+            int32_t value;      // Numeric value
+            size_t keyOffset;   // String Key offset in type string
+            size_t keyLength;   // String Key length
+        };
+
+        struct Type
+        {
+            ProtobufType type;
+            size_t enumEntiesSize;
+            EnumEntry enumEntries[0];
+        };
+        
+
+        Type* type_from_value(sqlite3_value *value)
+        {
+            const char *text = (const char *)sqlite3_value_text(value); // NULL terminated cstring
+            int textLength = (int)sqlite3_value_bytes(value);
+
+            // Initialize type as unknown
+            Type *type = (Type*)sqlite3_malloc64(sizeof(Type));
+            type->type = TYPE_UNKNOWN;
+            type->enumEntiesSize = 0;
             
-            switch (type.length())
+            if (textLength == 0) {type->type = TYPE_BUFFER;}
+            if (textLength == 4 && memcmp(text,     "bool", textLength) == 0){type->type = TYPE_BOOL;}
+            if (textLength == 4 && memcmp(text,     "enum", textLength) == 0){type->type = TYPE_ENUM;}
+            if (textLength == 5 && memcmp(text,    "bytes", textLength) == 0){type->type = TYPE_BYTES;}
+            if (textLength == 5 && memcmp(text,    "int32", textLength) == 0){type->type = TYPE_INT32;}
+            if (textLength == 5 && memcmp(text,    "int64", textLength) == 0){type->type = TYPE_INT64;}
+            if (textLength == 5 && memcmp(text,    "float", textLength) == 0){type->type = TYPE_FLOAT;}
+            if (textLength == 6 && memcmp(text,   "string", textLength) == 0){type->type = TYPE_STRING;}
+            if (textLength == 6 && memcmp(text,   "uint32", textLength) == 0){type->type = TYPE_UINT32;}
+            if (textLength == 6 && memcmp(text,   "uint64", textLength) == 0){type->type = TYPE_UINT64;}
+            if (textLength == 6 && memcmp(text,   "sint32", textLength) == 0){type->type = TYPE_SINT32;}
+            if (textLength == 6 && memcmp(text,   "sint64", textLength) == 0){type->type = TYPE_SINT64;}
+            if (textLength == 6 && memcmp(text,   "double", textLength) == 0){type->type = TYPE_DOUBLE;}
+            if (textLength == 7 && memcmp(text,  "fixed64", textLength) == 0){type->type = TYPE_FIXED64;}
+            if (textLength == 7 && memcmp(text,  "fixed32", textLength) == 0){type->type = TYPE_FIXED32;}
+            if (textLength == 8 && memcmp(text, "sfixed64", textLength) == 0){type->type = TYPE_SFIXED64;}
+            if (textLength == 8 && memcmp(text, "sfixed32", textLength) == 0){type->type = TYPE_SFIXED32;}
+
+            // Handle enum type with enum definition example: enum MY_ENUM {VALUE_A=0;VALUE_B=1;VALUE_C=2;}
+            if(textLength  >= 5 && memcmp(text, "enum", 4) == 0)
             {
-            case 0: // ""
-                return TYPE_BUFFER;
-            case 4: // bool
-                if (type == "bool") {return TYPE_BOOL;}
-                if (type == "enum") {return TYPE_ENUM;}
-                return TYPE_UNKNOWN;
-            case 5: // bytes, int32, int64, float
-                if (type == "bytes") {return TYPE_BYTES;}
-                if (type == "int32") {return TYPE_INT32;}
-                if (type == "int64") {return TYPE_INT64;}
-                if (type == "float") {return TYPE_FLOAT;}
-                return TYPE_UNKNOWN;
-            case 6: // string, uint32, uint64, sint32, sint64, double
-                if (type == "string") {return TYPE_STRING;}
-                if (type == "uint32") {return TYPE_UINT32;}
-                if (type == "uint64") {return TYPE_UINT64;}
-                if (type == "sint32") {return TYPE_SINT32;}
-                if (type == "sint64") {return TYPE_SINT64;}
-                if (type == "double") {return TYPE_DOUBLE;}
-                return TYPE_UNKNOWN;
-            case 7: // fixed64, fixed32
-                if (type == "fixed64") {return TYPE_FIXED64;}
-                if (type == "fixed32") {return TYPE_FIXED32;}
-                return TYPE_UNKNOWN;
-            case 8: // sfixed64, sfixed32
-                if (type == "sfixed64") {return TYPE_SFIXED64;}
-                if (type == "sfixed32") {return TYPE_SFIXED32;}
-                return TYPE_UNKNOWN;
-            default:
-                return TYPE_UNKNOWN;
+                type->type = TYPE_ENUM;
+
+                // find start of protobuf enum definition
+                const char *nameStart = (const char *)strchr(text, '{');
+                while (nameStart)
+                {
+                    // Remove leading spaces
+                    while (*(++nameStart) == ' '){}
+                    
+                    // Find start of next value
+                    const char *valueStart = (const char *)strchr(nameStart, '=');
+
+                    // Add enum value to list
+                    if(nameStart  && valueStart)
+                    {
+
+                        // Extract enum name
+                        size_t keyLength = valueStart - nameStart;
+
+                        // Add enum value to list
+                        if (keyLength > 0)
+                        {
+                            type = (Type*)sqlite3_realloc64(type, sizeof(Type) + sizeof(EnumEntry) * (type->enumEntiesSize + 1));
+                            type->enumEntries[type->enumEntiesSize].value = atoi(valueStart + 1);
+                            type->enumEntries[type->enumEntiesSize].keyOffset = (size_t)(nameStart - text);
+                            type->enumEntries[type->enumEntiesSize].keyLength = keyLength;
+                            type->enumEntiesSize++;
+                        }
+                    }
+
+                    // Find start of next name
+                    nameStart = (const char *)strchr(nameStart, ';');
+
+                }              
             }
+            
+            return type;
         }
 
         /// Return the element (or elements)
@@ -169,54 +201,49 @@ namespace sqlite_protobuf
         /// @returns a Protobuf-encoded BLOB or the appropriate SQL datatype
         static void protobuf_extract(sqlite3_context *context, int argc, sqlite3_value **argv)
         {
-
-            // Look up type from aux data
-            Type type;
-            Type* typePtr = (Type*)sqlite3_get_auxdata(context, 2);
-            if (typePtr == nullptr)
-            {
-                const std::string typeString = string_from_sqlite3_value(argv[2]);
-                type = type_from_string(typeString);
-                typePtr = (Type*)sqlite3_malloc64(sizeof(Type));
-                if (typePtr != nullptr)
-                {
-                    *typePtr = type;
-                    // Set type aux data since we no longer need the type pointer
-                    sqlite3_set_auxdata(context, 2, typePtr, sqlite3_free);
-                }
-            }
-            else
-            {
-                type = *typePtr;
-            }
-
-            // Check validity of type
-            if (type == TYPE_UNKNOWN)
-            {
-                sqlite3_result_error(context, "Type not valid, try type '' or check documentation", -1);
-                return;
-            }
-
             // Look up path from aux data
             bool setPathAuxData = false;
             Path* path = (Path*)sqlite3_get_auxdata(context, 1);
             if (path == nullptr)
             {
-                const std::string pathString = string_from_sqlite3_value(argv[1]);
-                path = path_from_string(pathString);
+                path = path_from_value(argv[1]);
                 setPathAuxData = true;
+            }
+
+            // Look up type from aux data
+            bool setTypeAuxData = false;
+            Type* type = (Type*)sqlite3_get_auxdata(context, 2);
+            if (type == nullptr)
+            {
+                type = type_from_value(argv[2]);
+                setTypeAuxData = true;
+            }
+
+            // Check validity of type
+            if (type->type == TYPE_UNKNOWN)
+            {
+                sqlite3_result_error(context, "Type not valid, try type '' or check documentation", -1);
+
+                // Set aux data, needs to be done after data no longer is needed (see sqlite documentation)
+                if (setPathAuxData){sqlite3_set_auxdata(context, 1, path, sqlite3_free);}
+                if (setTypeAuxData){sqlite3_set_auxdata(context, 2, type, sqlite3_free);}
+                return;
             }
 
             // Check validity of path
             if (path == nullptr){
                 sqlite3_result_error(context, "Path not valid, path should start with $", -1);
+                
+                // Set aux data, needs to be done after data no longer is needed (see sqlite documentation)
+                if (setPathAuxData){sqlite3_set_auxdata(context, 1, path, sqlite3_free);}
+                if (setTypeAuxData){sqlite3_set_auxdata(context, 2, type, sqlite3_free);}
                 return;
             }
             
             // Load protobuf data into a buffer
             Buffer buffer;
-            size_t length = static_cast<size_t>(sqlite3_value_bytes(argv[0]));
-            buffer.start = static_cast<const uint8_t *>(sqlite3_value_blob(argv[0]));
+            int length = (int)sqlite3_value_bytes(argv[0]);
+            buffer.start = (const uint8_t *)sqlite3_value_blob(argv[0]);
             buffer.end = buffer.start + length;
 
             // Look up message in cache
@@ -257,7 +284,7 @@ namespace sqlite_protobuf
                 }
                 else
                 {
-                    switch (type)
+                    switch (type->type)
                     {
                     case TYPE_BUFFER:
                         // We don't know the wire type, so try all until one succeeds
@@ -303,14 +330,20 @@ namespace sqlite_protobuf
                 if (field == nullptr) {break;}
             }
 
-            // Set path aux data, needs to be done after path no longer is needed (see sqlite documentation)
-            if (setPathAuxData)
+
+            if (field == nullptr) 
             {
-                sqlite3_set_auxdata(context, 1, path, sqlite3_free);
+                // Field not found, return NULL
+                sqlite3_result_null(context);
+                
+                // Set aux data, needs to be done after data no longer is needed (see sqlite documentation)
+                if (setPathAuxData){sqlite3_set_auxdata(context, 1, path, sqlite3_free);}
+                if (setTypeAuxData){sqlite3_set_auxdata(context, 2, type, sqlite3_free);}
+                return;
             }
 
+
             // Create result buffer pointing to correct memmory address
-            if (field == nullptr) {return;}
             Buffer result;
             result.start = field->value.start + (buffer.start - root->value.start);
             result.end = field->value.end + (buffer.start - root->value.start);
@@ -324,62 +357,79 @@ namespace sqlite_protobuf
             float valueFloat = 0;
             bool valueBool = 0;
 
-            switch (type)
+            switch (type->type)
             {
             case TYPE_BUFFER:
                 sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
-                return;
+                break;
             case TYPE_STRING:
                 sqlite3_result_text(context, (char *)result.start, result.size(), SQLITE_STATIC);
-                return;
+                break;
             case TYPE_BYTES:
                 sqlite3_result_blob(context, (char *)result.start, result.size(), SQLITE_STATIC);
-                return;
+                break;
             case TYPE_ENUM:
+                if (getInt32(&result, &valueInt32, index)) 
+                {
+                    sqlite3_result_int(context, valueInt32);
+                    for (size_t i = 0; i < type->enumEntiesSize; i++)
+                    {
+                        if (type->enumEntries[i].value == valueInt32)
+                        {
+                            sqlite3_result_text(context, (char *)sqlite3_value_text(argv[2]) + type->enumEntries[i].keyOffset, type->enumEntries[i].keyLength, SQLITE_STATIC);
+                        }
+                    }
+                }
+                break;
             case TYPE_INT32:
                 if (getInt32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
-                return;
+                break;
             case TYPE_INT64:
                 if (getInt64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
-                return;
+                break;
             case TYPE_UINT32:
                 if (getUint32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
-                return;
+                break;
             case TYPE_UINT64:
                 if (getUint64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
-                return;
+                break;
             case TYPE_SINT32:
                 if (getSint32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
-                return;
+                break;
             case TYPE_SINT64:
                 if (getSint64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
-                return;
+                break;
             case TYPE_BOOL:
                 if (getBool(&result, &valueBool, index)) {sqlite3_result_int(context, valueBool ? 1 : 0);}
-                return;
+                break;
             case TYPE_FIXED64:
                 if (getFixed64(&result, &valueUint64, index)) {sqlite3_result_int64(context, valueUint64);}
                 if (valueUint64 > INT64_MAX) {sqlite3_log(SQLITE_WARNING,"Protobuf type is unsigned, but SQLite does not support unsigned types. Value %llu doesn't fit in an int64.", valueUint64);}
-                return;
+                break;
             case TYPE_SFIXED64:
                 if (getSfixed64(&result, &valueInt64, index)) {sqlite3_result_int64(context, valueInt64);}
-                return;
+                break;
             case TYPE_DOUBLE:
                 if (getDouble(&result, &valueDouble, index)) {sqlite3_result_double(context, valueDouble);}
-                return;
+                break;
             case TYPE_FIXED32:
                 if (getFixed32(&result, &valueUint32, index)) {sqlite3_result_int64(context, valueUint32);}
-                return;
+                break;
             case TYPE_SFIXED32:
                 if (getSfixed32(&result, &valueInt32, index)) {sqlite3_result_int(context, valueInt32);}
-                return;
+                break;
             case TYPE_FLOAT:
                 if (getFloat(&result, &valueFloat, index)) {sqlite3_result_double(context, valueFloat);}
-                return;
+                break;
             default:
-                return;
+                break;
             }
+
+            // Set aux data, needs to be done after data no longer is needed (see sqlite documentation)
+            if (setPathAuxData){sqlite3_set_auxdata(context, 1, path, sqlite3_free);}
+            if (setTypeAuxData){sqlite3_set_auxdata(context, 2, type, sqlite3_free);}
+            return;
         }
     } // namespace
 

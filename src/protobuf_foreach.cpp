@@ -1,7 +1,6 @@
 #include "protobuf_foreach.h"
 #include "sqlite3ext.h"
 
-#include <string>
 #include <cstring>
 
 #include "protodec.h"
@@ -9,13 +8,6 @@
 namespace sqlite_protobuf
 {
     SQLITE_EXTENSION_INIT3
-
-    std::string string_from_sqlite3_value(sqlite3_value *value)
-    {
-        const char *text = static_cast<const char *>(sqlite3_value_blob(value));
-        size_t text_size = static_cast<size_t>(sqlite3_value_bytes(value));
-        return std::string(text, text_size);
-    }
 
     /*
     ** Define virtual table data structure containg data needed for virtual table
@@ -34,7 +26,7 @@ namespace sqlite_protobuf
     {
         sqlite3_vtab_cursor base;   // Base class - must be first
         sqlite3_int64 iRowid;       // The rowid
-        std::string path;           // Path to root field
+        char* path;                 // Path to root field
         Field field;                // Decoded protobuf message
         Field *root;                // Root field
     };
@@ -88,8 +80,13 @@ namespace sqlite_protobuf
         pCur = (ProtobufForeachCursor *)sqlite3_malloc( sizeof(*pCur) );
         if( pCur==0 ) return SQLITE_NOMEM;
         memset(pCur, 0, sizeof(*pCur));
-        *ppCursor = &pCur->base;
-        pCur->path = "$";
+        *ppCursor = (sqlite3_vtab_cursor *)pCur;
+        
+        // Initialize path to root
+        pCur->path = (char*)sqlite3_malloc64(2);
+        if ( pCur->path==0 ){return SQLITE_NOMEM;}
+        strcpy(pCur->path, "$\0");
+        
         return SQLITE_OK;
     }
 
@@ -99,6 +96,8 @@ namespace sqlite_protobuf
     static int protobufForeachClose(sqlite3_vtab_cursor *cur)
     {
         ProtobufForeachCursor *pCur = (ProtobufForeachCursor*)cur;
+        pCur->field.subFields.~vector();
+        sqlite3_free(pCur->path);
         sqlite3_free(pCur);
         return SQLITE_OK;
     }
@@ -143,7 +142,7 @@ namespace sqlite_protobuf
             sqlite3_result_blob(ctx, (char*)pCur->field.value.start, pCur->field.value.size(), SQLITE_STATIC);
             break;
         case PROTOBUF_FOREACH_ROOT:
-            sqlite3_result_text(ctx, pCur->path.c_str(), pCur->path.size(), SQLITE_TRANSIENT);
+            sqlite3_result_text(ctx, pCur->path, -1, SQLITE_STATIC);
             break;
         default:
             break;
@@ -183,7 +182,7 @@ namespace sqlite_protobuf
         pCur->iRowid = 0;
 
         // Query strategy 0, no buffer supplied
-        if(idxNum==0)
+        if(idxNum == 0)
         {
             return SQLITE_OK;
         }
@@ -196,51 +195,43 @@ namespace sqlite_protobuf
         pCur->root = &pCur->field;
         
         // Query strategy 3, path supplied perform search to find root
-        if(idxNum==3)
+        if(idxNum == 3)
         {
             // Get path from argument
-            const std::string path = string_from_sqlite3_value(argv[1]);
+            const char *pathText = (const char *)sqlite3_value_text(argv[1]); // NULL terminated cstring
+            int pathLength = (int)sqlite3_value_bytes(argv[1]);
             
-            if (path.length() == 0) 
-            {
-                return SQLITE_OK;
-            }
-            
-            if (path[0] != '$')
+            // Check that the path begins with $, representing the root of the tree
+            if (pathText[0] != '$')
             {
                 sqlite3_free(cur->pVtab->zErrMsg);
-                cur->pVtab->zErrMsg = sqlite3_mprintf("Invalid path");
+                cur->pVtab->zErrMsg = sqlite3_mprintf("Path not valid, path should start with $");
                 return SQLITE_ERROR;
             }
 
-            pCur->path = path;
+            // Store path in cursor
+            pCur->path = (char*)sqlite3_realloc64(pCur->path, pathLength + 1);
+            if (pCur->path == nullptr){return SQLITE_NOMEM;}
+            strcpy(pCur->path, pathText);
 
             // Parse the path string and traverse the message
             int fieldNumber, fieldIndex;
-            size_t fieldStart = path.find(".", 0);
+            const char *fieldStart = (const char *)strchr(pathText, '.');
             Field* parent = nullptr;
-            while(fieldStart < path.size())
+            while(fieldStart)
             {
-                size_t fieldEnd = path.find(".", fieldStart + 1);
-                size_t indexStart = path.find("[", fieldStart + 1);
-                size_t indexEnd = path.find("]", fieldStart + 1);
+                const char *fieldEnd   = (const char *)strchr(fieldStart + 1, '.');
+                const char *indexStart = (const char *)strchr(fieldStart + 1, '[');
+                const char *indexEnd   = (const char *)strchr(fieldStart + 1, ']');
 
-                fieldEnd = fieldEnd == std::string::npos ? path.size() : fieldEnd;
-
-                if (indexStart < fieldEnd && indexEnd < fieldEnd) // Both field and index supplied
-                {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, indexStart - fieldStart - 1).c_str());
-                    fieldIndex  = std::atoi(path.substr(indexStart + 1, indexEnd - indexStart - 1).c_str());
-                }
-                else // Only field supplied
-                {
-                    fieldNumber = std::atoi(path.substr(fieldStart + 1, fieldEnd - fieldStart - 1).c_str());
-                    fieldIndex  = 0; 
-                }
+                // Extract field and index
+                fieldNumber = atoi(fieldStart + 1);
+                fieldIndex  = (indexStart && indexEnd && (indexStart < fieldEnd || fieldEnd == nullptr)) ? atoi(indexStart + 1) : 0;
 
                 // Move path ponter forward
                 fieldStart = fieldEnd;
 
+                // Try extracting field as submessage or group
                 parent = pCur->root;
                 pCur->root = nullptr;
                 if (pCur->root == nullptr) {pCur->root = parent->getSubField(fieldNumber, WIRETYPE_LEN, fieldIndex);}

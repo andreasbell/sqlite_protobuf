@@ -55,8 +55,8 @@ SELECT
 	protobuf_extract(protobuf, '$.2', 'int32') as id,
 	protobuf_extract(protobuf, '$.1', 'string') as name,
 	protobuf_extract(protobuf, '$.3', 'string') as email,
-	protobuf_extract(value, '$.2', 'enum') as type,
+	protobuf_extract(value, '$.2', 'enum PhoneType {MOBILE=1; HOME=2; WORK=3;}') as type,
 	protobuf_extract(value, '$.1', 'string') as number
-FROM protobufs, protobuf_each(protobuf, '$') WHERE field = 4
+FROM protobufs, protobuf_each(protobuf, '$') WHERE field = 4 and wiretype = 2
 ```
 Note that this query is based on the definition found in the `person.proto` file given above, and we can map the extracted fields to fields given in the protobuf definition.
