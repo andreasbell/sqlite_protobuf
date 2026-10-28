@@ -20,8 +20,8 @@ The following pre-buildt libraries are available for [download](https://github.c
 |  | Windows | MacOS | Linux |
 |--|--|--|--|
 | x86 | [sqlite_protobuf.dll.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-windows-x86.zip) |  | [sqlite_protobuf.so.tar.gz](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-linux-x86.tar.gz) |
-| x86-64 | [sqlite_protobuf.dll.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-windows-x64.zip) | [sqlite_protobuf.dylib.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-macos-x64.zip) | [sqlite_protobuf.so.tar.gz](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-linux-x64.tar.gz) |
-| AArch64 (ARM64) | [sqlite_protobuf.dll.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-windows-aarch64.zip) | [sqlite_protobuf.dylib.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-macos-aarch64.zip) | [sqlite_protobuf.so.tar.gz](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-linux-aarch64.tar.gz)
+| x86-64 | [sqlite_protobuf.dll.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-windows-x64.zip) | [sqlite_protobuf.dylib.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-macos-universal.zip) | [sqlite_protobuf.so.tar.gz](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-linux-x64.tar.gz) |
+| AArch64 (ARM64) | [sqlite_protobuf.dll.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-windows-aarch64.zip) | [sqlite_protobuf.dylib.zip](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-macos-universal.zip) | [sqlite_protobuf.so.tar.gz](https://github.com/andreasbell/sqlite_protobuf/releases/latest/download/sqlite_protobuf-linux-aarch64.tar.gz)
 
 ### How to use
 
