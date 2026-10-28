@@ -62,7 +62,7 @@ Field* Field::getSubField(uint32_t fieldNumber, WireType wireType, int64_t index
     return nullptr;
 }
 
-static inline const uint8_t *readVarint(const Buffer *in, int64_t *out, size_t maxBytes)
+static inline const uint8_t *readVarint(const Buffer *in, uint64_t *out, size_t maxBytes)
 {
     *out = 0;
     if (!in->start || in->start >= in->end)
@@ -100,7 +100,7 @@ static inline const uint8_t *readVarint(const Buffer *in, int64_t *out, size_t m
 static inline int decodeVarint(Field *field, Buffer *in)
 {
     const uint8_t *p;
-    int64_t n;
+    uint64_t n;
     if (in->start >= in->end)
     {
         return DECODE_ERROR;
@@ -148,7 +148,7 @@ static inline int decodeFixed32(Field *field, Buffer *in)
 
 static inline int decodeString(Field *field, Buffer *in)
 {
-    int64_t length;
+    uint64_t length;
     const uint8_t *ptr = readVarint(in, &length, MAX_VARINT_32BYTES);
 
     if (!ptr || ptr + length > in->end)
@@ -167,7 +167,7 @@ static inline int decodeSubField(Field *field, bool packed)
 {
     Buffer b = field->value;
     Field subField;
-    int64_t tag;
+    uint64_t tag;
 
     while (b.start < b.end)
     {
@@ -254,7 +254,7 @@ static inline int decodePacked(Field *field, WireType wireType)
 
 static inline int decodeGroup(Field *field, Buffer *in, bool packed)
 {
-    int64_t tag;
+    uint64_t tag;
 
     field->value.start = in->start;
     field->value.end = in->end;
@@ -442,9 +442,9 @@ void toJson(Field *field, std::ostream &os, bool showType)
     }
 }
 
-static inline int getVarint(const Buffer *in, int64_t *out, int64_t index, size_t maxBytes)
+static inline int getVarint(const Buffer *in, uint64_t *out, int64_t index, size_t maxBytes)
 {
-    int64_t number;
+    uint64_t number;
     int64_t length = 0;
     Buffer b;
 
@@ -484,7 +484,7 @@ static inline int getVarint(const Buffer *in, int64_t *out, int64_t index, size_
 
 int getInt32(const Buffer *in, int32_t *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_32BYTES))
     {
         return DECODE_ERROR;
@@ -496,7 +496,7 @@ int getInt32(const Buffer *in, int32_t *out, int64_t index)
 
 int getInt64(const Buffer *in, int64_t *out, int64_t index)
 {   
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_64BYTES))
     {
         return DECODE_ERROR;
@@ -508,7 +508,7 @@ int getInt64(const Buffer *in, int64_t *out, int64_t index)
 
 int getUint32(const Buffer *in, uint32_t *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_32BYTES))
     {
         return DECODE_ERROR;
@@ -520,7 +520,7 @@ int getUint32(const Buffer *in, uint32_t *out, int64_t index)
 
 int getUint64(const Buffer *in, uint64_t *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_64BYTES))
     {
         return DECODE_ERROR;
@@ -532,33 +532,33 @@ int getUint64(const Buffer *in, uint64_t *out, int64_t index)
 
 int getSint32(const Buffer *in, int32_t *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_32BYTES))
     {
         return DECODE_ERROR;
     }
 
+    number = (number >> 1) ^ (0 - (number & 1));
     *out = (int32_t)number;
-    *out = (*out >> 1) ^ -(*out & 1); // zigzag decoding
     return DECODE_OK;
 }
 
 int getSint64(const Buffer *in, int64_t *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_64BYTES))
     {
         return DECODE_ERROR;
     }
 
+    number = (number >> 1) ^ (0 - (number & 1));
     *out = (int64_t)number;
-    *out = (*out >> 1) ^ -(*out & 1); // zigzag decoding
     return DECODE_OK;
 }
 
 int getBool(const Buffer *in, bool *out, int64_t index)
 {
-    int64_t number;
+    uint64_t number;
     if(DECODE_OK != getVarint(in, &number, index, MAX_VARINT_32BYTES))
     {
         return DECODE_ERROR;
