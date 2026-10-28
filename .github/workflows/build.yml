@@ -138,7 +138,7 @@ jobs:
       run: |
         cd build
         ctest -C Release --output-on-failure
-        lipo -verify_arch x86_64 arm64 sqlite_protobuf.dylib
+        lipo sqlite_protobuf.dylib -verify_arch x86_64 arm64
     - uses: actions/upload-artifact@v4
       with:
         name: macos-universal
