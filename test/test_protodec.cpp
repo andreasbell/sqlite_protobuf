@@ -603,38 +603,64 @@ int test_repeated_len(void)
 
 int test_type_int32(void)
 {
-    uint8_t data[] = {0x08, 0xd6, 0xff, 0xff, 0xff, 0x0f};
-    int32_t expected = -42;
+    uint8_t data[] = {
+        0x08, 0xd6, 0xff, 0xff, 0xff, 0x0f,
+        0x08, 0xff, 0xff, 0xff, 0xff, 0x07,
+        0x08, 0x80, 0x80, 0x80, 0x80, 0x08
+    };
     int32_t result = 0;
 
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
     Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(1, WIRETYPE_VARINT, 0);
     
+    Field *f = field.getSubField(1, WIRETYPE_VARINT, 0);
     ASSERT(f != nullptr);
     ASSERT(getInt32(&f->value, &result, 0) != 0);
-    ASSERT(result == expected);
+    ASSERT(result == -42);
+
+    f = field.getSubField(1, WIRETYPE_VARINT, 1);
+    ASSERT(f != nullptr);
+    ASSERT(getInt32(&f->value, &result, 0) != 0);
+    ASSERT(result == INT32_MAX);
+
+    f = field.getSubField(1, WIRETYPE_VARINT, 2);
+    ASSERT(f != nullptr);
+    ASSERT(getInt32(&f->value, &result, 0) != 0);
+    ASSERT(result == INT32_MIN);
 
     return 0;
 }
 
 int test_type_int64(void)
 {
-    uint8_t data[] = {0x10, 0xd6, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01};
-    int64_t expected = -42;
+    uint8_t data[] = {
+        0x10, 0xd6, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+        0x10, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+        0x10, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01
+    };
     int64_t result = 0;
 
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
     Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(2, WIRETYPE_VARINT, 0);
     
+    Field *f = field.getSubField(2, WIRETYPE_VARINT, 0);
     ASSERT(f != nullptr);
     ASSERT(getInt64(&f->value, &result, 0) != 0);
-    ASSERT(result == expected);
+    ASSERT(result == -42);
+
+    f = field.getSubField(2, WIRETYPE_VARINT, 1);
+    ASSERT(f != nullptr);
+    ASSERT(getInt64(&f->value, &result, 0) != 0);
+    ASSERT(result == INT64_MAX);
+
+    f = field.getSubField(2, WIRETYPE_VARINT, 2);
+    ASSERT(f != nullptr);
+    ASSERT(getInt64(&f->value, &result, 0) != 0);
+    ASSERT(result == INT64_MIN);
 
     return 0;
 }
@@ -679,38 +705,65 @@ int test_type_uint64(void)
 
 int test_type_sint32(void)
 {
-    uint8_t data[] = {0x28, 0x53};
-    int32_t expected = -42;
+    uint8_t data[] = {
+        0x28, 0x53, 
+        0x28, 0xFE, 0xFF, 0xFF, 0xFF, 0x0F, 
+        0x28, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F
+    };
     int32_t result = 0;
 
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
     Field field = decodeProtobuf(buffer);
+
     Field *f = field.getSubField(5, WIRETYPE_VARINT, 0);
-    
     ASSERT(f != nullptr);
     ASSERT(getSint32(&f->value, &result, 0) != 0);
-    ASSERT(result == expected);
+    ASSERT(result == -42);
+
+    f = field.getSubField(5, WIRETYPE_VARINT, 1);
+    ASSERT(f != nullptr);
+    ASSERT(getSint32(&f->value, &result, 0) != 0);
+    std::cout << result;
+    ASSERT(result == INT32_MAX);
+
+    f = field.getSubField(5, WIRETYPE_VARINT, 2);
+    ASSERT(f != nullptr);
+    ASSERT(getSint32(&f->value, &result, 0) != 0);
+    ASSERT(result == INT32_MIN);
 
     return 0;
 }
 
 int test_type_sint64(void)
 {
-    uint8_t data[] = {0x30, 0x53};
-    int64_t expected = -42;
+    uint8_t data[] = {
+        0x30, 0x53,
+        0x30, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+        0x30, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01
+    };
     int64_t result = 0;
 
     Buffer buffer;
     buffer.start = data;
     buffer.end = buffer.start + sizeof(data);
     Field field = decodeProtobuf(buffer);
-    Field *f = field.getSubField(6, WIRETYPE_VARINT, 0);
     
+    Field *f = field.getSubField(6, WIRETYPE_VARINT, 0);
     ASSERT(f != nullptr);
     ASSERT(getSint64(&f->value, &result, 0) != 0);
-    ASSERT(result == expected);
+    ASSERT(result == -42);
+
+    f = field.getSubField(6, WIRETYPE_VARINT, 1);
+    ASSERT(f != nullptr);
+    ASSERT(getSint64(&f->value, &result, 0) != 0);
+    ASSERT(result == INT64_MAX);
+
+    f = field.getSubField(6, WIRETYPE_VARINT, 2);
+    ASSERT(f != nullptr);
+    ASSERT(getSint64(&f->value, &result, 0) != 0);
+    ASSERT(result == INT64_MIN);
 
     return 0;
 }

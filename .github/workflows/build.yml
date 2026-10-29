@@ -125,40 +125,23 @@ jobs:
         name: windows-aarch64
         path: build/*.dll
 
-  build-macos-x64:
-    runs-on: macos-13
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build release
-      run: |
-        mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
-        cmake --build . --config=release
-    - name: Test
-      run: |
-        cd build
-        ctest -C Release --output-on-failure
-    - uses: actions/upload-artifact@v4
-      with:
-        name: macos-x64
-        path: build/*.dylib
-
-  build-macos-aarch64:
+  build-macos-universal:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
     - name: Build release
       run: |
         mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
         cmake --build . --config=release
     - name: Test
       run: |
         cd build
         ctest -C Release --output-on-failure
+        lipo sqlite_protobuf.dylib -verify_arch x86_64 arm64
     - uses: actions/upload-artifact@v4
       with:
-        name: macos-aarch64
+        name: macos-universal
         path: build/*.dylib
 
   create-release:
@@ -171,8 +154,7 @@ jobs:
     - build-windows-x64
     - build-windows-x86
     - build-windows-aarch64
-    - build-macos-x64
-    - build-macos-aarch64
+    - build-macos-universal
     runs-on: ubuntu-latest
 
     steps:
@@ -187,8 +169,7 @@ jobs:
         mv windows-x64/sqlite_protobuf.dll . && zip sqlite_protobuf-windows-x64.zip *.dll && rm *.dll
         mv windows-x86/sqlite_protobuf.dll . && zip sqlite_protobuf-windows-x86.zip *.dll && rm *.dll
         mv windows-aarch64/sqlite_protobuf.dll . && zip sqlite_protobuf-windows-aarch64.zip *.dll && rm *.dll
-        mv macos-x64/sqlite_protobuf.dylib . && zip sqlite_protobuf-macos-x64.zip *.dylib && rm *.dylib
-        mv macos-aarch64/sqlite_protobuf.dylib . && zip sqlite_protobuf-macos-aarch64.zip *.dylib && rm *.dylib
+        mv macos-universal/sqlite_protobuf.dylib . && zip sqlite_protobuf-macos-universal.zip *.dylib && rm *.dylib
 
     - name: Create Release
       id: create_release
@@ -201,5 +182,4 @@ jobs:
           sqlite_protobuf-windows-x64.zip
           sqlite_protobuf-windows-x86.zip
           sqlite_protobuf-windows-aarch64.zip
-          sqlite_protobuf-macos-x64.zip
-          sqlite_protobuf-macos-aarch64.zip
+          sqlite_protobuf-macos-universal.zip
